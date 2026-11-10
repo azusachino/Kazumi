@@ -33,6 +33,102 @@ void main() {
     }
   });
 
+  group('HistoryRepository watched tracking signal', () {
+    final watched = <(int, int)>[];
+    late HistoryRepository repository;
+    final identity = PlaybackHistoryIdentity.online(
+      bangumiItem: _item(20),
+      pluginName: 'plugin',
+      episodeNumber: 3,
+      episodeTitle: 'EP3',
+      road: 0,
+      onlineBangumiSrc: '',
+      episodePageUrl: '',
+    );
+
+    setUp(() {
+      watched.clear();
+      repository = HistoryRepository(
+        historiesBox: historiesBox,
+        privateModeReader: () => privateMode,
+        progressSyncAppender: _noopHistorySync,
+        deleteSyncAppender: _noopDeleteSync,
+        clearSyncAppender: _noopClearSync,
+        episodeWatchedAppender: (subjectId, {required progress}) async {
+          watched.add((subjectId, progress));
+        },
+      );
+    });
+
+    test('emits once after observed playback crosses 90 percent', () async {
+      await repository.updateHistory(
+        identity: identity,
+        progress: const Duration(seconds: 80),
+        duration: const Duration(seconds: 100),
+      );
+      await repository.updateHistory(
+        identity: identity,
+        progress: const Duration(seconds: 90),
+        duration: const Duration(seconds: 100),
+      );
+      await repository.updateHistory(
+        identity: identity,
+        progress: const Duration(seconds: 95),
+        duration: const Duration(seconds: 100),
+      );
+      expect(watched, [(20, 3)]);
+    });
+
+    test('does not emit below 90 percent', () async {
+      await repository.updateHistory(
+        identity: identity,
+        progress: const Duration(seconds: 80),
+        duration: const Duration(seconds: 100),
+      );
+      expect(watched, isEmpty);
+    });
+
+    test('does not emit when duration is unknown', () async {
+      await repository.updateHistory(
+        identity: identity,
+        progress: const Duration(seconds: 95),
+      );
+      expect(watched, isEmpty);
+    });
+
+    test('does not emit in private mode', () async {
+      privateMode = true;
+      await repository.updateHistory(
+        identity: identity,
+        progress: const Duration(seconds: 80),
+        duration: const Duration(seconds: 100),
+      );
+      await repository.updateHistory(
+        identity: identity,
+        progress: const Duration(seconds: 95),
+        duration: const Duration(seconds: 100),
+      );
+      expect(watched, isEmpty);
+    });
+
+    test(
+      'does not treat first saved position past threshold as playback',
+      () async {
+        await repository.updateHistory(
+          identity: identity,
+          progress: const Duration(seconds: 95),
+          duration: const Duration(seconds: 100),
+        );
+        expect(watched, isEmpty);
+      },
+    );
+
+    test('manual mark enqueues the same event', () async {
+      await repository.markEpisodeWatched(identity);
+      expect(watched, [(20, 3)]);
+    });
+  });
+
   group('HistoryRepository source metadata', () {
     test('keeps online source isolated from offline history', () async {
       final repository = HistoryRepository(

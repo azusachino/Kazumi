@@ -18,6 +18,8 @@ typedef HistoryProgressSyncAppender = Future<void> Function({
 typedef HistoryDeleteSyncAppender = Future<void> Function(History history);
 
 typedef HistoryClearSyncAppender = Future<void> Function();
+typedef EpisodeWatchedAppender =
+    Future<void> Function(int subjectId, {required int progress});
 
 /// 历史记录数据访问接口
 ///
@@ -100,18 +102,24 @@ class HistoryRepository implements IHistoryRepository {
     HistoryProgressSyncAppender? progressSyncAppender,
     HistoryDeleteSyncAppender? deleteSyncAppender,
     HistoryClearSyncAppender? clearSyncAppender,
+    EpisodeWatchedAppender? episodeWatchedAppender,
   })  : _historiesBox = historiesBox ?? GStorage.histories,
         _privateModeReader = privateModeReader ??
             (() => GStorage.getSetting(SettingsKeys.privateMode)),
         _progressSyncAppender = progressSyncAppender ?? _appendProgressSync,
         _deleteSyncAppender = deleteSyncAppender ?? _appendDeleteSync,
-        _clearSyncAppender = clearSyncAppender ?? _appendClearSync;
+        _clearSyncAppender = clearSyncAppender ?? _appendClearSync,
+        _episodeWatchedAppender = episodeWatchedAppender ??
+            ((subjectId, {required progress}) => GStorage.trackingSync
+                .enqueue(subjectId, progress: progress));
 
   final Box<History> _historiesBox;
   final bool Function() _privateModeReader;
   final HistoryProgressSyncAppender _progressSyncAppender;
   final HistoryDeleteSyncAppender _deleteSyncAppender;
   final HistoryClearSyncAppender _clearSyncAppender;
+  final EpisodeWatchedAppender _episodeWatchedAppender;
+  final Map<String, Duration> _sessionProgress = {};
   final HistoryStorageCoordinator _storageCoordinator =
       HistoryStorageCoordinator();
 
@@ -204,6 +212,7 @@ class HistoryRepository implements IHistoryRepository {
     required Duration progress,
     Duration duration = Duration.zero,
   }) async {
+    final playbackProgress = progress;
     // 距结尾过近视为已看完，归零保存
     if (duration > Duration.zero &&
         progress >= duration - nearEndWatchedThreshold) {
@@ -221,6 +230,28 @@ class HistoryRepository implements IHistoryRepository {
 
         final episode = identity.episodeNumber;
         final adapterName = identity.pluginName;
+        if (duration > Duration.zero) {
+          final sessionKey = '${identity.bangumiItem.id}:$episode';
+          final previous = _sessionProgress[sessionKey];
+          final threshold = duration * 0.9;
+          if (previous != null &&
+              previous < threshold &&
+              playbackProgress >= threshold) {
+            try {
+              await _episodeWatchedAppender(
+                identity.bangumiItem.id,
+                progress: episode,
+              );
+            } catch (e, stackTrace) {
+              KazumiLogger().w(
+                'Tracking: failed to enqueue watched episode',
+                error: e,
+                stackTrace: stackTrace,
+              );
+            }
+          }
+          _sessionProgress[sessionKey] = playbackProgress;
+        }
         final bangumiItem = identity.bangumiItem;
 
         final now = DateTime.now();
@@ -334,6 +365,23 @@ class HistoryRepository implements IHistoryRepository {
         stackTrace: stackTrace,
       );
       return null;
+    }
+  }
+
+  /// Manually mark an episode watched using the tracking outbox signal.
+  Future<void> markEpisodeWatched(PlaybackHistoryIdentity identity) async {
+    if (!identity.canRecord || getPrivateMode()) return;
+    try {
+      await _episodeWatchedAppender(
+        identity.bangumiItem.id,
+        progress: identity.episodeNumber,
+      );
+    } catch (e, stackTrace) {
+      KazumiLogger().w(
+        'Tracking: failed to enqueue manually watched episode',
+        error: e,
+        stackTrace: stackTrace,
+      );
     }
   }
 

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:kazumi/app_module.dart';
@@ -110,4 +111,5 @@ void main() async {
       child: const AppWidget(),
     ),
   );
+  unawaited(GStorage.trackingSync.drain());
 }

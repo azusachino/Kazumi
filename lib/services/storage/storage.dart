@@ -13,6 +13,9 @@ import 'package:kazumi/modules/search/search_history_module.dart';
 import 'package:kazumi/modules/download/download_module.dart';
 import 'package:kazumi/services/storage/history_storage_coordinator.dart';
 import 'package:kazumi/services/download/download_path_migration.dart';
+import 'package:kazumi/services/tracking/models.dart';
+import 'package:kazumi/services/tracking/stores.dart';
+import 'package:kazumi/services/tracking/tracking_sync.dart';
 
 import 'package:kazumi/services/storage/settings_keys.dart';
 export 'package:kazumi/services/storage/settings_keys.dart';
@@ -27,6 +30,9 @@ class GStorage {
   static late final Box<dynamic> _setting;
   static late Box<SearchHistory> searchHistory;
   static late Box<DownloadRecord> downloads;
+  static late Box<TrackingBinding> trackingBindings;
+  static late Box<OutboxEntry> trackingOutbox;
+  static late TrackingSync trackingSync;
 
   /// Hive directory path, initialized during init()
   static String? _hivePath;
@@ -159,6 +165,14 @@ class GStorage {
     shieldList = await _openBoxSafe<String>('shieldList');
     searchHistory = await _openBoxSafe<SearchHistory>('searchHistory');
     downloads = await _openBoxSafe<DownloadRecord>('downloads');
+    trackingBindings = await _openBoxSafe<TrackingBinding>('trackingBindings');
+    trackingOutbox = await _openBoxSafe<OutboxEntry>('trackingOutbox');
+    trackingSync = TrackingSync(
+      bindings: HiveBindingStore(trackingBindings),
+      outbox: HiveOutboxStore(trackingOutbox),
+      trackers: const [],
+      tokenProvider: (_) async => null,
+    );
     if (Platform.isIOS) {
       await rebaseIosDownloadPaths(downloads);
     }

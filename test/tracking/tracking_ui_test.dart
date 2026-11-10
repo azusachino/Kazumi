@@ -26,6 +26,7 @@ class _FakeTracker implements Tracker {
   RemoteEntry? remote;
   List<TrackerSearchResult> results = const [];
   int saves = 0;
+  String? lastQuery;
 
   @override
   Future<TrackerUser> viewer(String token) async => TrackerUser(
@@ -36,7 +37,10 @@ class _FakeTracker implements Tracker {
   Future<List<TrackerSearchResult>> search(
     String query, {
     String? token,
-  }) async => results;
+  }) async {
+    lastQuery = query;
+    return results;
+  }
   @override
   Future<RemoteEntry?> readEntry(String token, String remoteId) async => remote;
   @override
@@ -134,14 +138,14 @@ void main() {
   setUp(_setup);
   tearDown(_cleanup);
 
-  testWidgets('signed-out rows point to account settings', (tester) async {
+  testWidgets('signed-out state points to account settings', (tester) async {
     await tester.pumpWidget(
       MaterialApp(
         home: Material(child: TrackingSheet(item: _item())),
       ),
     );
-    expect(find.text('尚未登录'), findsNWidgets(2));
-    expect(find.text('前往设置'), findsNWidgets(2));
+    expect(find.text('尚未登录追踪账号'), findsOneWidget);
+    expect(find.text('追踪账号'), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
   });
 
@@ -158,7 +162,7 @@ void main() {
         home: Material(child: TrackingSheet(item: _item())),
       ),
     );
-    await tester.tap(find.text('开始追踪'));
+    await tester.tap(find.text('添加追踪'));
     await tester.pump();
     await tester.runAsync(
       () => Future<void>.delayed(const Duration(milliseconds: 50)),
@@ -169,7 +173,7 @@ void main() {
       _settings.get(SettingsKeys.bangumiExcludedSubjectIds.name),
       isNot(contains('123')),
     );
-    expect(find.textContaining('Bangumi'), findsOneWidget);
+    expect(find.text('bgm'), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
   });
 
@@ -212,7 +216,8 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(find.textContaining('4 / 12 话'), findsOneWidget);
+    expect(find.text('4 / 12'), findsOneWidget);
+    expect(find.text('8.0'), findsOneWidget);
     expect(find.text('在看'), findsOneWidget);
     expect(find.textContaining('同步失败'), findsOneWidget);
     expect(find.text('重试'), findsOneWidget);
@@ -242,10 +247,11 @@ void main() {
       MaterialApp(home: Material(child: TrackingSheet(item: _item()))),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('进度'));
+    await tester.tap(find.text('12 / 24'));
     await tester.pumpAndSettle();
-    await tester.enterText(find.byType(TextField).last, '13');
-    await tester.tap(find.text('保存'));
+    await tester.drag(find.byType(ListWheelScrollView), const Offset(0, -40));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('确定'));
     await tester.pumpAndSettle();
     await tester.runAsync(
       () => Future<void>.delayed(const Duration(milliseconds: 50)),
@@ -281,7 +287,7 @@ void main() {
     );
     await tester.tap(find.byTooltip('更多操作'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('移除绑定').last);
+    await tester.tap(find.text('移除').last);
     await tester.pumpAndSettle();
     expect(find.textContaining('远端追番列表不会改变'), findsOneWidget);
     await tester.tap(find.text('移除').last);
@@ -295,7 +301,7 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('AniList search confirms and creates a binding', (tester) async {
+  testWidgets('AniList search selects and creates a binding', (tester) async {
     await tester.runAsync(
       () => GStorage.anilistAccount.signInWithToken('token'),
     );
@@ -319,15 +325,52 @@ void main() {
     expect(find.textContaining('TV'), findsOneWidget);
     await tester.tap(find.text('Ani title'));
     await tester.pump();
-    await tester.tap(find.text('绑定所选条目'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('确认绑定').last);
+    await tester.tap(find.text('追踪'));
     await tester.pump();
     await tester.runAsync(
       () => Future<void>.delayed(const Duration(milliseconds: 50)),
     );
     await tester.pump();
     expect(GStorage.trackingBindings.get('123:anilist')?.remoteId, '42');
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('AniList add opens search with original title', (tester) async {
+    await tester.runAsync(() => GStorage.anilistAccount.signInWithToken('token'));
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: TrackingSheet(item: _item()))));
+    await tester.tap(find.text('添加追踪'));
+    await tester.pumpAndSettle();
+    expect(find.byType(AniListSearchPage), findsOneWidget);
+    expect(find.text('Example'), findsOneWidget);
+    expect(_anilistTracker.lastQuery, 'Example');
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('status and score selectors enqueue chosen values', (tester) async {
+    await tester.runAsync(() => GStorage.bangumiAccount.signInWithToken('token'));
+    await tester.runAsync(() => _bindings.put(TrackingBinding(
+      subjectId: 123, trackerId: TrackerId.bangumi, remoteId: '123',
+    )));
+    GStorage.trackingSync.dispose();
+    await tester.pumpWidget(MaterialApp(home: Material(child: TrackingSheet(item: _item()))));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('状态'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('在看'));
+    await tester.tap(find.text('确定'));
+    await tester.pumpAndSettle();
+    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
+    await tester.pump();
+    expect(GStorage.trackingOutbox.get('123:bangumi')?.status, TrackStatus.current);
+    await tester.tap(find.text('评分'));
+    await tester.pumpAndSettle();
+    await tester.drag(find.byType(ListWheelScrollView), const Offset(0, -80));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('确定'));
+    await tester.pumpAndSettle();
+    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
+    await tester.pump();
+    expect(GStorage.trackingOutbox.get('123:bangumi')?.score, 20);
     await tester.pumpWidget(const SizedBox());
   });
 

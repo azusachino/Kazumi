@@ -1,17 +1,17 @@
 import 'package:flutter/material.dart';
-import 'package:kazumi/bean/dialog/adaptive_bottom_sheet.dart';
 import 'package:kazumi/modules/bangumi/bangumi_item.dart';
 import 'package:kazumi/services/storage/storage.dart';
 import 'package:kazumi/services/tracking/tracker.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 Future<void> showAniListSearchSheet(
   BuildContext context,
   BangumiItem item, {
   bool rebind = false,
-}) => showAdaptiveBottomSheet<void>(
-  context: context,
-  maxHeightFactor: 0.9,
-  builder: (_) => AniListSearchPage(item: item, rebind: rebind),
+}) => Navigator.of(context).push<void>(
+  MaterialPageRoute<void>(
+    builder: (_) => AniListSearchPage(item: item, rebind: rebind),
+  ),
 );
 
 class AniListSearchPage extends StatefulWidget {
@@ -25,7 +25,7 @@ class AniListSearchPage extends StatefulWidget {
 
 class _AniListSearchPageState extends State<AniListSearchPage> {
   late final _query = TextEditingController(
-    text: widget.item.nameCn.isNotEmpty ? widget.item.nameCn : widget.item.name,
+    text: widget.item.name.isNotEmpty ? widget.item.name : widget.item.nameCn,
   );
   List<TrackerSearchResult> _results = const [];
   String? _error;
@@ -84,28 +84,34 @@ class _AniListSearchPageState extends State<AniListSearchPage> {
   }
 
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-    child: Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: TextField(
-                controller: _query,
-                textInputAction: TextInputAction.search,
-                onSubmitted: (_) => _search(),
-                decoration: const InputDecoration(labelText: '搜索 AniList'),
-              ),
-            ),
-            IconButton(
-              tooltip: '搜索',
-              onPressed: _busy ? null : _search,
-              icon: const Icon(Icons.search),
-            ),
-          ],
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(
+      title: TextField(
+        controller: _query,
+        textInputAction: TextInputAction.search,
+        onChanged: (_) => setState(() {}),
+        onSubmitted: (_) => _search(),
+        decoration: const InputDecoration(
+          hintText: '搜索 AniList',
+          border: InputBorder.none,
         ),
+      ),
+      actions: [
+        if (_query.text.isNotEmpty)
+          IconButton(
+            tooltip: '清除',
+            onPressed: () => setState(() => _query.clear()),
+            icon: const Icon(Icons.close),
+          ),
+        IconButton(
+          tooltip: '搜索',
+          onPressed: _busy ? null : _search,
+          icon: const Icon(Icons.search),
+        ),
+      ],
+    ),
+    body: Column(
+      children: [
         if (_busy) const LinearProgressIndicator(),
         if (_error != null)
           Padding(
@@ -115,72 +121,107 @@ class _AniListSearchPageState extends State<AniListSearchPage> {
               style: TextStyle(color: Theme.of(context).colorScheme.error),
             ),
           ),
-        Flexible(
-          child: RadioGroup<String>(
-            groupValue: _selected,
-            onChanged: (value) => setState(() => _selected = value),
-            child: ListView.builder(
-              shrinkWrap: true,
-              itemCount: _results.length,
-              itemBuilder: (context, index) {
-                final result = _results[index];
-                final subtitle = [
-                  if (result.subtitle?.isNotEmpty ?? false) result.subtitle!,
-                  if (result.format?.isNotEmpty ?? false) result.format!,
-                  if (result.seasonYear != null) '${result.seasonYear}',
-                  if (result.episodes != null) '${result.episodes} 话',
-                ].join(' · ');
-                return RadioListTile<String>(
-                  value: result.id,
-                  title: Text(result.title),
-                  subtitle: Text(subtitle),
-                  secondary: result.cover == null
-                      ? null
-                      : Image.network(
-                          result.cover!,
-                          width: 48,
-                          height: 64,
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, _, _) =>
-                              const Icon(Icons.image_not_supported_outlined),
+        Expanded(
+          child: ListView.builder(
+            padding: const EdgeInsets.all(12),
+            itemCount: _results.length,
+            itemBuilder: (context, index) {
+              final result = _results[index];
+              final details = [
+                if (result.subtitle?.isNotEmpty ?? false) result.subtitle!,
+                if (result.format?.isNotEmpty ?? false) result.format!,
+                if (result.seasonYear != null) '${result.seasonYear}',
+                if (result.episodes != null) '${result.episodes} 话',
+              ].join(' · ');
+              return Card(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  side: BorderSide(
+                    color: _selected == result.id
+                        ? Theme.of(context).colorScheme.primary
+                        : Colors.transparent,
+                    width: 2,
+                  ),
+                ),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(16),
+                  onTap: () => setState(() => _selected = result.id),
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (result.cover != null)
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(6),
+                            child: Image.network(
+                              result.cover!,
+                              width: 64,
+                              height: 96,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, _, _) => const SizedBox(
+                                width: 64,
+                                height: 96,
+                                child: Icon(Icons.image_not_supported_outlined),
+                              ),
+                            ),
+                          )
+                        else
+                          const SizedBox(
+                            width: 64,
+                            height: 96,
+                            child: Icon(Icons.image_outlined),
+                          ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                result.title,
+                                style: Theme.of(context).textTheme.titleMedium,
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                details,
+                                style: Theme.of(context).textTheme.bodySmall,
+                              ),
+                            ],
+                          ),
                         ),
-                );
-              },
-            ),
+                        PopupMenuButton<String>(
+                          tooltip: '更多操作',
+                          onSelected: (_) => launchUrl(
+                            Uri.https('anilist.co', '/anime/${result.id}'),
+                            mode: LaunchMode.externalApplication,
+                          ),
+                          itemBuilder: (_) => const [
+                            PopupMenuItem(
+                              value: 'open',
+                              child: Text('在浏览器中打开'),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            },
           ),
         ),
-        if (_selected != null)
-          FilledButton(
-            onPressed: _busy
-                ? null
-                : () {
-                    final result = _results.firstWhere(
-                      (row) => row.id == _selected,
-                    );
-                    showDialog<void>(
-                      context: context,
-                      builder: (dialogContext) => AlertDialog(
-                        title: const Text('确认绑定'),
-                        content: Text('将「${result.title}」绑定到此番剧？'),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.pop(dialogContext),
-                            child: const Text('取消'),
-                          ),
-                          FilledButton(
-                            onPressed: () {
-                              Navigator.pop(dialogContext);
-                              _bind(result);
-                            },
-                            child: const Text('确认绑定'),
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-            child: const Text('绑定所选条目'),
-          ),
       ],
+    ),
+    bottomNavigationBar: SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: FilledButton(
+          onPressed: _busy || _selected == null
+              ? null
+              : () => _bind(_results.firstWhere((row) => row.id == _selected)),
+          child: const Text('追踪'),
+        ),
+      ),
     ),
   );
 }

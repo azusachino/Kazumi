@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_modular/flutter_modular.dart';
 import 'package:hive_ce_flutter/hive_flutter.dart';
 import 'package:kazumi/bean/dialog/adaptive_bottom_sheet.dart';
 import 'package:kazumi/modules/bangumi/bangumi_item.dart';
+import 'package:kazumi/pages/info/anilist_search_page.dart';
 import 'package:kazumi/services/storage/storage.dart';
 import 'package:kazumi/services/tracking/models.dart';
 import 'package:kazumi/services/tracking/tracker.dart';
-import 'package:kazumi/pages/info/anilist_search_page.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 Future<void> showTrackingSheet(BuildContext context, BangumiItem item) =>
@@ -26,6 +27,8 @@ class TrackingSheet extends StatefulWidget {
 
 class _TrackingSheetState extends State<TrackingSheet> {
   final Map<String, RemoteEntry?> _remote = {};
+  final Map<String, String> _remoteGeneration = {};
+  int _revision = 0;
   final Set<String> _reading = {};
   final Set<String> _loaded = {};
   late final _bindingChanges = GStorage.trackingBindings.listenable();
@@ -46,6 +49,7 @@ class _TrackingSheetState extends State<TrackingSheet> {
   }
 
   void _refresh() {
+    _revision++;
     _loaded.clear();
     if (mounted) setState(() {});
   }
@@ -61,40 +65,30 @@ class _TrackingSheetState extends State<TrackingSheet> {
   Future<void> _read(TrackingBinding binding) async {
     if (_reading.contains(binding.key) || _loaded.contains(binding.key)) return;
     _reading.add(binding.key);
+    final revision = _revision;
     try {
       final token = binding.trackerId == TrackerId.bangumi
           ? await GStorage.bangumiAccount.validToken()
           : await GStorage.anilistAccount.validToken();
       if (token == null) return;
-      final tracker = binding.trackerId == TrackerId.bangumi
-          ? GStorage.trackingSync.trackers[TrackerId.bangumi]!
-          : GStorage.trackingSync.trackers[TrackerId.anilist]!;
-      final entry = await tracker.readEntry(token, binding.remoteId);
-      _loaded.add(binding.key);
-      if (mounted) setState(() => _remote[binding.key] = entry);
+      final entry = await GStorage.trackingSync.trackers[binding.trackerId]!
+          .readEntry(token, binding.remoteId);
+      if (revision == _revision &&
+          mounted &&
+          GStorage.trackingBindings.get(binding.key)?.generation ==
+              binding.generation) {
+        _loaded.add(binding.key);
+        setState(() {
+          _remote[binding.key] = entry;
+          _remoteGeneration[binding.key] = binding.generation;
+        });
+      }
     } catch (_) {
-      // The last locally known progress remains useful while offline.
-      _loaded.add(binding.key);
+      if (revision == _revision) _loaded.add(binding.key);
     } finally {
       _reading.remove(binding.key);
+      if (mounted && revision != _revision) setState(() {});
     }
-  }
-
-  Future<void> _editNumber(
-    String title,
-    int initial,
-    ValueChanged<int> save, {
-    int? maximum,
-  }) async {
-    final value = await showDialog<int>(
-      context: context,
-      builder: (_) => _TrackingNumberDialog(
-        title: title,
-        initial: initial,
-        maximum: maximum,
-      ),
-    );
-    if (value != null) save(value);
   }
 
   Future<void> _remove(TrackingBinding binding) async {
@@ -102,9 +96,11 @@ class _TrackingSheetState extends State<TrackingSheet> {
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('移除绑定？'),
-        content: Text(binding.trackerId == TrackerId.bangumi
-            ? '此番剧不会再被自动追踪。只移除此设备上的绑定，远端追番列表不会改变。'
-            : '只会移除此设备上的绑定，远端追番列表不会改变。'),
+        content: Text(
+          binding.trackerId == TrackerId.bangumi
+              ? '此番剧不会再被自动追踪。只移除此设备上的绑定，远端追番列表不会改变。'
+              : '只会移除此设备上的绑定，远端追番列表不会改变。',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
@@ -125,7 +121,13 @@ class _TrackingSheetState extends State<TrackingSheet> {
     }
   }
 
-  Future<void> _editOffset(TrackingBinding binding, int value) async {
+  Future<void> _editOffset(TrackingBinding binding) async {
+    final value = await showDialog<int>(
+      context: context,
+      builder: (_) =>
+          _NumberDialog(title: '集数偏移', initial: binding.episodeOffset),
+    );
+    if (value == null) return;
     await GStorage.bangumiBindingManager.bindings.put(
       TrackingBinding(
         subjectId: binding.subjectId,
@@ -139,282 +141,402 @@ class _TrackingSheetState extends State<TrackingSheet> {
         title: binding.title,
         cover: binding.cover,
         total: binding.total,
+        // New generation: writes queued under the old offset are dropped,
+        // since progress sent with a wrong offset could never be lowered.
       ),
     );
     await GStorage.trackingSync.drain();
   }
 
-  Future<void> _editStatus(TrackingBinding binding, TrackStatus status) =>
-      GStorage.trackingSync.enqueue(
-        binding.subjectId,
-        status: status,
-        trackerId: binding.trackerId,
-      );
-
-  Future<void> _editProgress(TrackingBinding binding, int progress) {
-    // The sync engine adds the offset, so convert this remote count to local numbering.
-    final localProgress = progress > binding.episodeOffset
-        ? progress - binding.episodeOffset
-        : 0;
-    return GStorage.trackingSync.enqueue(
-      binding.subjectId,
-      progress: localProgress,
-      trackerId: binding.trackerId,
-    );
-  }
-
-  Future<void> _editScore(TrackingBinding binding, int score) =>
-      GStorage.trackingSync.enqueue(
-        binding.subjectId,
-        score: score * 10,
-        trackerId: binding.trackerId,
-      );
-
-  Future<void> _openRemote(TrackingBinding binding) async {
-    final uri = binding.trackerId == TrackerId.bangumi
-        ? Uri.https('bgm.tv', '/subject/${binding.remoteId}')
-        : Uri.https('anilist.co', '/anime/${binding.remoteId}');
-    await launchUrl(uri, mode: LaunchMode.externalApplication);
-  }
-
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-    child: ListView(
-      shrinkWrap: true,
-      children: [
-        Text('追踪', style: Theme.of(context).textTheme.titleLarge),
-        const SizedBox(height: 12),
-        for (final id in TrackerId.values) _buildTrackerRow(id),
-      ],
-    ),
-  );
-
-  Widget _buildTrackerRow(TrackerId id) {
-    final isBangumi = id == TrackerId.bangumi;
-    final signedIn = isBangumi
-        ? GStorage.bangumiAccount.isSignedIn
-        : GStorage.anilistAccount.isSignedIn;
-    final name = isBangumi ? 'Bangumi' : 'AniList';
-    final username = isBangumi
-        ? GStorage.bangumiAccount.username
-        : GStorage.anilistAccount.username;
-    final key = '${widget.item.id}:${id.name}';
-    final binding = GStorage.trackingBindings.get(key);
-    if (!signedIn) {
-      return ListTile(
-        leading: Icon(
-          isBangumi ? Icons.bookmarks_outlined : Icons.movie_outlined,
-        ),
-        title: Text(name),
-        subtitle: const Text('尚未登录'),
-        trailing: TextButton(
-          onPressed: () {
-            Navigator.of(context).pop();
-            context.pushNamed('/settings/bangumi/');
-          },
-          child: const Text('前往设置'),
-        ),
-      );
-    }
-    if (binding == null) {
-      return ListTile(
-        leading: Icon(
-          isBangumi ? Icons.bookmarks_outlined : Icons.movie_outlined,
-        ),
-        title: Text(name),
-        subtitle: Text(username),
-        trailing: TextButton(
-          onPressed: () {
-            if (isBangumi) {
-              GStorage.bangumiBindingManager.startTracking(widget.item);
-            } else {
-              showAniListSearchSheet(context, widget.item);
-            }
-          },
-          child: Text(isBangumi ? '开始追踪' : '搜索并绑定'),
-        ),
-      );
-    }
-    _read(binding);
-    final pending = GStorage.trackingOutbox.get(key);
-    final entry = _remote[key];
-    final progress = entry?.progress ?? binding.lastRemoteProgress ?? 0;
-    final total = entry?.total ?? binding.total;
-    final title = binding.title?.isNotEmpty == true ? binding.title! : name;
-    final syncLabel = pending == null
-        ? (binding.lastSyncAt == null
-              ? '等待同步'
-              : '已同步 ${_date(binding.lastSyncAt!)}')
-        : pending.error != null
-        ? '同步失败：${pending.error}'
-        : pending.retryAt != null
-        ? '将在 ${_date(pending.retryAt!)} 重试'
-        : '等待同步';
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    '$name · $title',
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                ),
-                PopupMenuButton<String>(
-                  tooltip: '更多操作',
-                  onSelected: (action) {
-                    if (action == 'open') {
-                      _openRemote(binding);
-                    }
-                    if (action == 'search') {
-                      showAniListSearchSheet(
-                        context,
-                        widget.item,
-                        rebind: true,
-                      );
-                    }
-                    if (action == 'remove') {
-                      _remove(binding);
-                    }
-                  },
-                  itemBuilder: (_) => [
-                    const PopupMenuItem(value: 'open', child: Text('在浏览器中打开')),
-                    if (!isBangumi)
-                      const PopupMenuItem(
-                        value: 'search',
-                        child: Text('搜索并重新绑定'),
-                      ),
-                    const PopupMenuItem(value: 'remove', child: Text('移除绑定')),
-                  ],
-                ),
-              ],
-            ),
-            Text(
-              '$progress / ${total ?? '未知'} 话 · ${entry == null ? '状态未知' : _status(entry.status)} · ${entry?.score == null ? '未评分' : '评分 ${entry!.score! / 10}'}',
-            ),
-            Text(
-              syncLabel,
-              style: TextStyle(
-                color: pending?.error == null
-                    ? null
-                    : Theme.of(context).colorScheme.error,
+  Future<void> _selectStatus(
+    TrackingBinding binding,
+    TrackStatus? initial,
+  ) async {
+    var selected = initial ?? TrackStatus.planning;
+    final result = await showDialog<TrackStatus>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('状态'),
+          content: SingleChildScrollView(
+            child: RadioGroup<TrackStatus>(
+              groupValue: selected,
+              onChanged: (value) {
+                if (value != null) setDialogState(() => selected = value);
+              },
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  for (final status in TrackStatus.values)
+                    RadioListTile<TrackStatus>(
+                      value: status,
+                      title: Text(_status(status)),
+                    ),
+                ],
               ),
             ),
-            Wrap(
-              spacing: 4,
-              children: [
-                DropdownButton<TrackStatus>(
-                  value: entry?.status,
-                  hint: const Text('状态'),
-                  items: TrackStatus.values
-                      .map(
-                        (status) => DropdownMenuItem(
-                          value: status,
-                          child: Text(_status(status)),
-                        ),
-                      )
-                      .toList(),
-                  onChanged: (status) {
-                    if (status != null) _editStatus(binding, status);
-                  },
-                ),
-                TextButton(
-                  onPressed: () => _editNumber(
-                    '已看集数',
-                    progress,
-                    (value) => _editProgress(binding, value),
-                  ),
-                  child: const Text('进度'),
-                ),
-                TextButton(
-                  onPressed: () => _editNumber(
-                    '评分（0–10）',
-                    (entry?.score ?? binding.score ?? 0) ~/ 10,
-                    (value) => _editScore(binding, value),
-                    maximum: 10,
-                  ),
-                  child: Text(
-                    '评分 ${(entry?.score ?? binding.score ?? 0) / 10}',
-                  ),
-                ),
-                TextButton(
-                  onPressed: () => _editNumber(
-                    '集数偏移',
-                    binding.episodeOffset,
-                    (value) => _editOffset(binding, value),
-                  ),
-                  child: Text('偏移 ${binding.episodeOffset}'),
-                ),
-                if (pending?.error != null)
-                  TextButton(
-                    onPressed: () => GStorage.trackingSync.retryFailed(id),
-                    child: const Text('重试'),
-                  ),
-              ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('取消'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, selected),
+              child: const Text('确定'),
             ),
           ],
         ),
       ),
     );
+    if (result != null) {
+      await GStorage.trackingSync.enqueue(
+        binding.subjectId,
+        status: result,
+        trackerId: binding.trackerId,
+      );
+    }
   }
 
-  String _date(DateTime date) =>
-      '${date.month}/${date.day} ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+  Future<void> _selectNumber(
+    TrackingBinding binding,
+    String title,
+    int initial, {
+    int? maximum,
+    bool score = false,
+  }) async {
+    final result = await showDialog<int>(
+      context: context,
+      builder: (_) => _NumberDialog(
+        title: title,
+        initial: initial,
+        maximum: maximum,
+        score: score,
+      ),
+    );
+    if (result == null || (score && result == 0)) return;
+    if (score) {
+      await GStorage.trackingSync.enqueue(
+        binding.subjectId,
+        score: result * 10,
+        trackerId: binding.trackerId,
+      );
+    } else {
+      final localProgress = result > binding.episodeOffset
+          ? result - binding.episodeOffset
+          : 0;
+      await GStorage.trackingSync.enqueue(
+        binding.subjectId,
+        progress: localProgress,
+        trackerId: binding.trackerId,
+      );
+    }
+  }
+
+  Uri _uri(TrackingBinding binding) => binding.trackerId == TrackerId.bangumi
+      ? Uri.https('bgm.tv', '/subject/${binding.remoteId}')
+      : Uri.https('anilist.co', '/anime/${binding.remoteId}');
+
+  Future<void> _copy(String text) async {
+    await Clipboard.setData(ClipboardData(text: text));
+    if (mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('已复制')));
+    }
+  }
+
+  void _open(TrackingBinding binding) =>
+      launchUrl(_uri(binding), mode: LaunchMode.externalApplication);
+
+  @override
+  Widget build(BuildContext context) {
+    final ids = [
+      if (GStorage.bangumiAccount.isSignedIn) TrackerId.bangumi,
+      if (GStorage.anilistAccount.isSignedIn) TrackerId.anilist,
+    ];
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+      child: ListView(
+        shrinkWrap: true,
+        children: [
+          Text('追踪', style: Theme.of(context).textTheme.titleLarge),
+          const SizedBox(height: 16),
+          if (ids.isEmpty) ...[
+            const Text('尚未登录追踪账号'),
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                context.pushNamed('/settings/bangumi/');
+              },
+              child: const Text('追踪账号'),
+            ),
+          ],
+          for (final id in ids)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 24),
+              child: _buildTracker(id),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _logo(TrackerId id) => Container(
+    width: 40,
+    height: 40,
+    alignment: Alignment.center,
+    decoration: BoxDecoration(
+      color: id == TrackerId.bangumi
+          ? const Color(0xFFF09199)
+          : const Color(0xFF02A9FF),
+      borderRadius: BorderRadius.circular(8),
+    ),
+    child: Text(
+      id == TrackerId.bangumi ? 'bgm' : 'AL',
+      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+    ),
+  );
+
+  Widget _buildTracker(TrackerId id) {
+    final key = '${widget.item.id}:${id.name}';
+    final binding = GStorage.trackingBindings.get(key);
+    if (binding == null) {
+      return Row(
+        children: [
+          _logo(id),
+          const SizedBox(width: 16),
+          Expanded(
+            child: TextButton(
+              onPressed: () {
+                if (id == TrackerId.bangumi) {
+                  GStorage.bangumiBindingManager.startTracking(widget.item);
+                } else {
+                  showAniListSearchSheet(context, widget.item);
+                }
+              },
+              child: const Text('添加追踪'),
+            ),
+          ),
+        ],
+      );
+    }
+    _read(binding);
+    final pending = GStorage.trackingOutbox.get(key);
+    final entry = _remoteGeneration[key] == binding.generation
+        ? _remote[key]
+        : null;
+    final progress = entry?.progress ?? binding.lastRemoteProgress ?? 0;
+    final total = entry?.total ?? binding.total;
+    final score = entry?.score ?? binding.score;
+    final title = binding.title?.isNotEmpty == true
+        ? binding.title!
+        : (id == TrackerId.bangumi ? 'Bangumi' : 'AniList');
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            GestureDetector(
+              onTap: () => _open(binding),
+              onLongPress: () => _copy(_uri(binding).toString()),
+              child: _logo(id),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: InkWell(
+                onTap: id == TrackerId.anilist
+                    ? () => showAniListSearchSheet(
+                        context,
+                        widget.item,
+                        rebind: true,
+                      )
+                    : null,
+                onLongPress: () => _copy(title),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  child: Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 32, child: VerticalDivider()),
+            PopupMenuButton<String>(
+              tooltip: '更多操作',
+              onSelected: (action) {
+                switch (action) {
+                  case 'open':
+                    _open(binding);
+                  case 'copy':
+                    _copy(_uri(binding).toString());
+                  case 'offset':
+                    _editOffset(binding);
+                  case 'remove':
+                    _remove(binding);
+                }
+              },
+              itemBuilder: (_) => const [
+                PopupMenuItem(value: 'open', child: Text('在浏览器中打开')),
+                PopupMenuItem(value: 'copy', child: Text('复制链接')),
+                PopupMenuItem(value: 'offset', child: Text('集数偏移')),
+                PopupMenuItem(value: 'remove', child: Text('移除')),
+              ],
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Container(
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: IntrinsicHeight(
+            child: Row(
+              children: [
+                _cell(
+                  entry == null ? '状态' : _status(entry.status),
+                  () => _selectStatus(binding, entry?.status),
+                ),
+                const VerticalDivider(width: 1),
+                _cell(
+                  total != null && total > 0
+                      ? '$progress / $total'
+                      : '$progress',
+                  () => _selectNumber(
+                    binding,
+                    '已看集数',
+                    progress,
+                    maximum: total != null && total > 0 ? total : null,
+                  ),
+                ),
+                const VerticalDivider(width: 1),
+                _cell(
+                  score == null || score == 0 ? '评分' : '${score / 10}',
+                  () => _selectNumber(
+                    binding,
+                    '评分',
+                    (score ?? 0) ~/ 10,
+                    maximum: 10,
+                    score: true,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        if (pending != null)
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  pending.error == null ? '等待同步' : '同步失败：${pending.error}',
+                  style: TextStyle(
+                    color: pending.error == null
+                        ? null
+                        : Theme.of(context).colorScheme.error,
+                  ),
+                ),
+              ),
+              if (pending.error != null)
+                TextButton(
+                  onPressed: () => GStorage.trackingSync.retryFailed(id),
+                  child: const Text('重试'),
+                ),
+            ],
+          ),
+      ],
+    );
+  }
+
+  Widget _cell(String text, VoidCallback onTap) => Expanded(
+    child: InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 16),
+        child: Text(
+          text,
+          textAlign: TextAlign.center,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+        ),
+      ),
+    ),
+  );
 }
 
-class _TrackingNumberDialog extends StatefulWidget {
-  const _TrackingNumberDialog({
+class _NumberDialog extends StatefulWidget {
+  const _NumberDialog({
     required this.title,
     required this.initial,
     this.maximum,
+    this.score = false,
   });
-
   final String title;
   final int initial;
   final int? maximum;
+  final bool score;
 
   @override
-  State<_TrackingNumberDialog> createState() => _TrackingNumberDialogState();
+  State<_NumberDialog> createState() => _NumberDialogState();
 }
 
-class _TrackingNumberDialogState extends State<_TrackingNumberDialog> {
+class _NumberDialogState extends State<_NumberDialog> {
+  late int selected = widget.maximum == null
+      ? widget.initial
+      : widget.initial.clamp(0, widget.maximum!);
   late final _controller = TextEditingController(text: '${widget.initial}');
+  late final _wheel = FixedExtentScrollController(initialItem: selected);
 
   @override
   void dispose() {
     _controller.dispose();
+    _wheel.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) => AlertDialog(
     title: Text(widget.title),
-    content: TextField(
-      controller: _controller,
-      keyboardType: TextInputType.number,
-      autofocus: true,
-      decoration: const InputDecoration(border: OutlineInputBorder()),
-    ),
+    content: widget.maximum == null
+        ? TextField(
+            controller: _controller,
+            keyboardType: TextInputType.number,
+            autofocus: true,
+            decoration: const InputDecoration(border: OutlineInputBorder()),
+          )
+        : SizedBox(
+            width: double.maxFinite,
+            height: 200,
+            child: ListWheelScrollView.useDelegate(
+              controller: _wheel,
+              itemExtent: 40,
+              physics: const FixedExtentScrollPhysics(),
+              onSelectedItemChanged: (value) => selected = value,
+              childDelegate: ListWheelChildBuilderDelegate(
+                childCount: widget.maximum! + 1,
+                builder: (context, index) => Center(
+                  child: Text(widget.score && index == 0 ? '不评分' : '$index'),
+                ),
+              ),
+            ),
+          ),
     actions: [
       TextButton(
         onPressed: () => Navigator.pop(context),
         child: const Text('取消'),
       ),
-      FilledButton(
+      TextButton(
         onPressed: () {
-          final parsed = int.tryParse(_controller.text);
-          if (parsed != null &&
-              parsed >= 0 &&
-              (widget.maximum == null || parsed <= widget.maximum!)) {
-            Navigator.pop(context, parsed);
-          }
+          final value = widget.maximum == null
+              ? int.tryParse(_controller.text)
+              : selected;
+          if (value != null && value >= 0) Navigator.pop(context, value);
         },
-        child: const Text('保存'),
+        child: const Text('确定'),
       ),
     ],
   );

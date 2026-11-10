@@ -4,6 +4,9 @@ import 'package:flutter_modular/flutter_modular.dart';
 import 'package:hive_ce_flutter/hive_flutter.dart';
 import 'package:kazumi/bean/dialog/adaptive_bottom_sheet.dart';
 import 'package:kazumi/modules/bangumi/bangumi_item.dart';
+import 'package:kazumi/modules/bangumi/bangumi_title.dart';
+import 'package:kazumi/modules/collect/collect_type.dart';
+import 'package:kazumi/pages/collect/collect_controller.dart';
 import 'package:kazumi/pages/info/anilist_search_page.dart';
 import 'package:kazumi/services/storage/storage.dart';
 import 'package:kazumi/services/tracking/models.dart';
@@ -26,26 +29,43 @@ class TrackingSheet extends StatefulWidget {
 }
 
 class _TrackingSheetState extends State<TrackingSheet> {
+  final _collectController = inject<CollectController>();
   final Map<String, RemoteEntry?> _remote = {};
   final Map<String, String> _remoteGeneration = {};
   int _revision = 0;
   final Set<String> _reading = {};
   final Set<String> _loaded = {};
+  late final _collectChanges = GStorage.collectibles.listenable();
   late final _bindingChanges = GStorage.trackingBindings.listenable();
   late final _outboxChanges = GStorage.trackingOutbox.listenable();
 
   @override
   void initState() {
     super.initState();
+    _collectChanges.addListener(_refreshCollect);
     _bindingChanges.addListener(_refresh);
     _outboxChanges.addListener(_refresh);
   }
 
   @override
   void dispose() {
+    _collectChanges.removeListener(_refreshCollect);
     _bindingChanges.removeListener(_refresh);
     _outboxChanges.removeListener(_refresh);
     super.dispose();
+  }
+
+  void _refreshCollect() {
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _selectCollectType(CollectType type) async {
+    if (_collectController.getCollectType(widget.item) == type.value) return;
+    if (type == CollectType.none) {
+      await _collectController.deleteCollect(widget.item);
+    } else {
+      await _collectController.addCollect(widget.item, type: type.value);
+    }
   }
 
   void _refresh() {
@@ -260,6 +280,27 @@ class _TrackingSheetState extends State<TrackingSheet> {
       child: ListView(
         shrinkWrap: true,
         children: [
+          Text('收藏', style: Theme.of(context).textTheme.titleLarge),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            children: [
+              for (final type in [
+                CollectType.none,
+                CollectType.planToWatch,
+                CollectType.watching,
+                CollectType.watched,
+                CollectType.onHold,
+                CollectType.abandoned,
+              ])
+                ChoiceChip(
+                  label: Text(type == CollectType.none ? '未追' : type.label),
+                  selected: _collectController.getCollectType(widget.item) == type.value,
+                  onSelected: (_) => _selectCollectType(type),
+                ),
+            ],
+          ),
+          const SizedBox(height: 24),
           Text('追踪', style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: 16),
           if (ids.isEmpty) ...[
@@ -329,9 +370,9 @@ class _TrackingSheetState extends State<TrackingSheet> {
     final progress = entry?.progress ?? binding.lastRemoteProgress ?? 0;
     final total = entry?.total ?? binding.total;
     final score = entry?.score ?? binding.score;
-    final title = binding.title?.isNotEmpty == true
-        ? binding.title!
-        : (id == TrackerId.bangumi ? 'Bangumi' : 'AniList');
+    final title = id == TrackerId.bangumi
+        ? widget.item.displayTitle
+        : (binding.title?.isNotEmpty == true ? binding.title! : 'AniList');
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [

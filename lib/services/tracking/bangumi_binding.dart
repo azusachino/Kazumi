@@ -52,7 +52,7 @@ class BangumiBindingManager {
         subjectId: item.id,
         trackerId: TrackerId.bangumi,
         remoteId: id,
-        title: item.nameCn.isEmpty ? item.name : item.nameCn,
+        title: item.name.trim().isEmpty ? item.nameCn : item.name,
         cover: item.images['medium'],
       ),
     );

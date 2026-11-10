@@ -1,9 +1,13 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_modular/flutter_modular.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive_ce/hive.dart';
-import 'package:kazumi/hive_registrar.g.dart';
+import 'package:kazumi/bean/widget/collect_button.dart';
+import 'package:kazumi/pages/collect/collect_controller.dart';
+import 'package:kazumi/repositories/collect_crud_repository.dart';
+import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
 import 'package:kazumi/modules/bangumi/bangumi_item.dart';
 import 'package:kazumi/pages/info/anilist_search_page.dart';
 import 'package:kazumi/pages/info/tracking_sheet.dart';
@@ -18,6 +22,14 @@ import 'package:kazumi/services/tracking/models.dart';
 import 'package:kazumi/services/tracking/stores.dart';
 import 'package:kazumi/services/tracking/tracker.dart';
 import 'package:kazumi/services/tracking/tracking_sync.dart';
+
+class _TestPaths extends PathProviderPlatform {
+  _TestPaths(this.path);
+  final String path;
+
+  @override
+  Future<String?> getApplicationSupportPath() async => path;
+}
 
 class _FakeTracker implements Tracker {
   _FakeTracker(this.id);
@@ -84,11 +96,19 @@ BangumiItem _item() => BangumiItem(
 
 Future<void> _initialize() async {
   _dir = await Directory.systemTemp.createTemp('kazumi-tracking-ui');
+  PathProviderPlatform.instance = _TestPaths(_dir.path);
   Hive.init(_dir.path);
-  if (!Hive.isAdapterRegistered(0)) Hive.registerAdapters();
+  await GStorage.init();
+  GStorage.trackingSync.dispose();
 }
 
 Future<void> _setup() async {
+  await GStorage.collectibles.clear();
+  await GStorage.collectChanges.clear();
+  await GStorage.putSetting(SettingsKeys.preferOriginalTitle, false);
+  bootstrapModule(createModule(register: (c) {
+    c.addInstance<CollectController>(CollectController(CollectCrudRepository()));
+  }));
   final suffix = '${_boxNumber++}';
   _settings = await Hive.openBox<dynamic>('settings_$suffix');
   GStorage.trackingBindings = await Hive.openBox<TrackingBinding>(
@@ -137,6 +157,12 @@ void main() {
   setUpAll(_initialize);
   setUp(_setup);
   tearDown(_cleanup);
+
+  test('info page has no separate tracking icon', () {
+    final source = File('lib/pages/info/info_page.dart').readAsStringSync();
+    expect(source, isNot(contains('Icons.sync_alt_rounded')));
+    expect(source, isNot(contains('showTrackingSheet(')));
+  });
 
   testWidgets('signed-out state points to account settings', (tester) async {
     await tester.pumpWidget(
@@ -218,7 +244,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('4 / 12'), findsOneWidget);
     expect(find.text('8.0'), findsOneWidget);
-    expect(find.text('在看'), findsOneWidget);
+    expect(find.text('在看'), findsNWidgets(2));
     expect(find.textContaining('同步失败'), findsOneWidget);
     expect(find.text('重试'), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
@@ -356,7 +382,9 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('状态'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('在看'));
+    await tester.tap(find.descendant(
+      of: find.byType(AlertDialog), matching: find.text('在看'),
+    ));
     await tester.tap(find.text('确定'));
     await tester.pumpAndSettle();
     await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
@@ -371,6 +399,59 @@ void main() {
     await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
     await tester.pump();
     expect(GStorage.trackingOutbox.get('123:bangumi')?.score, 20);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('collection button opens sheet and updates local status and bindings', (tester) async {
+    await tester.runAsync(() => GStorage.bangumiAccount.signInWithToken('token'));
+    GStorage.trackingSync.dispose();
+    var opened = 0;
+    var closed = 0;
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: Center(
+      child: CollectButton.extend(
+        bangumiItem: _item(), onOpen: () => opened++, onClose: () => closed++,
+      ),
+    ))));
+    expect(find.text('未追'), findsOneWidget);
+    await tester.tap(find.text('未追'));
+    await tester.pumpAndSettle();
+    expect(opened, 1);
+    expect(find.byType(TrackingSheet), findsOneWidget);
+    await tester.runAsync(() async {
+      await tester.tap(find.text('在看'));
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    });
+    await tester.pumpAndSettle();
+    expect(GStorage.collectibles.get(123)?.type, 1);
+    expect(GStorage.trackingOutbox.get('123:bangumi')?.status, TrackStatus.current);
+    expect(GStorage.trackingBindings.get('123:bangumi')?.title, 'Example');
+    expect(find.text('在看 · 1'), findsOneWidget);
+    await tester.runAsync(() async {
+      await tester.tap(find.text('未追'));
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    });
+    await tester.pumpAndSettle();
+    expect(GStorage.collectibles.get(123), isNull);
+    Navigator.of(tester.element(find.byType(TrackingSheet))).pop();
+    await tester.pumpAndSettle();
+    expect(closed, 1);
+    expect(find.text('未追 · 1'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('Bangumi title follows display preference', (tester) async {
+    await tester.runAsync(() => GStorage.bangumiAccount.signInWithToken('token'));
+    await tester.runAsync(() => _bindings.put(TrackingBinding(
+      subjectId: 123, trackerId: TrackerId.bangumi, remoteId: '123', title: 'old snapshot',
+    )));
+    await tester.pumpWidget(MaterialApp(home: Material(child: TrackingSheet(item: _item()))));
+    await tester.pumpAndSettle();
+    expect(find.text('示例番剧'), findsOneWidget);
+    expect(find.text('old snapshot'), findsNothing);
+    await tester.runAsync(() => GStorage.putSetting(SettingsKeys.preferOriginalTitle, true));
+    await tester.pumpWidget(MaterialApp(home: Material(child: TrackingSheet(key: UniqueKey(), item: _item()))));
+    await tester.pumpAndSettle();
+    expect(find.text('Example'), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
   });
 

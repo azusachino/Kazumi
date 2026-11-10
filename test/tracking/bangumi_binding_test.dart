@@ -32,7 +32,7 @@ void main() {
       id: 123,
       type: 2,
       name: 'show',
-      nameCn: '',
+      nameCn: '中文',
       summary: '',
       airDate: '',
       airWeekday: 0,
@@ -53,6 +53,7 @@ void main() {
     expect(bindings.rows.length, 1);
     final binding = bindings.rows['123:bangumi']!;
     expect(binding.remoteId, '123');
+    expect(binding.title, 'show');
     expect(outbox.rows['123:bangumi']!.progress, 2);
     await manager.watched(item, 3);
     expect(bindings.rows['123:bangumi']!.generation, binding.generation);

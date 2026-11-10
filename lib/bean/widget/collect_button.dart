@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_modular/flutter_modular.dart';
-import 'package:kazumi/bean/widget/kazumi_menu.dart';
+import 'package:hive_ce_flutter/hive_flutter.dart';
 import 'package:kazumi/modules/bangumi/bangumi_item.dart';
 import 'package:kazumi/modules/collect/collect_type.dart';
 import 'package:kazumi/pages/collect/collect_controller.dart';
+import 'package:kazumi/pages/info/tracking_sheet.dart';
+import 'package:kazumi/services/storage/storage.dart';
 
 class CollectButton extends StatefulWidget {
   const CollectButton({
@@ -47,43 +49,45 @@ class _CollectButtonState extends State<CollectButton> {
     CollectType.abandoned => Icons.heart_broken,
   };
 
-  Future<void> _selectType(CollectType type) async {
-    if (!mounted ||
-        type.value == _collectController.getCollectType(widget.bangumiItem)) {
-      return;
+  Future<void> _open() async {
+    widget.onOpen?.call();
+    try {
+      await showTrackingSheet(context, widget.bangumiItem);
+    } finally {
+      widget.onClose?.call();
     }
-    await _collectController.addCollect(widget.bangumiItem, type: type.value);
-    if (mounted) setState(() {});
   }
 
   @override
   Widget build(BuildContext context) {
-    final collectType = CollectType.fromValue(
-      _collectController.getCollectType(widget.bangumiItem),
-    );
-    return KazumiMenuButton(
-      onClose: widget.onClose,
-      onOpen: widget.onOpen,
-      crossAxisUnconstrained: false,
-      builder: (context, toggle) => widget._isExtended
-          ? FilledButton.icon(
-              onPressed: toggle,
-              icon: Icon(_iconFor(collectType)),
-              label: Text(_labelFor(collectType)),
-            )
-          : IconButton(
-              onPressed: toggle,
-              tooltip: _labelFor(collectType),
-              icon: Icon(_iconFor(collectType), color: widget.color),
-            ),
-      menuChildren: [
-        for (final type in CollectType.values)
-          KazumiMenuItem(
-            label: _labelFor(type),
-            selected: type == collectType,
-            onPressed: () => _selectType(type),
-          ),
-      ],
+    return ValueListenableBuilder(
+      valueListenable: GStorage.collectibles.listenable(),
+      builder: (context, _, _) => ValueListenableBuilder(
+        valueListenable: GStorage.trackingBindings.listenable(),
+        builder: (context, bindings, _) {
+          final type = CollectType.fromValue(
+            _collectController.getCollectType(widget.bangumiItem),
+          );
+          final count = bindings.values
+              .where((binding) => binding.subjectId == widget.bangumiItem.id)
+              .length;
+          final label = _labelFor(type);
+          final icon = Icon(_iconFor(type), color: widget._isExtended ? null : widget.color);
+          return widget._isExtended
+              ? FilledButton.icon(
+                  onPressed: _open,
+                  icon: icon,
+                  label: Text(count > 0 ? '$label · $count' : label),
+                )
+              : IconButton(
+                  onPressed: _open,
+                  tooltip: count > 0 ? '$label · $count' : label,
+                  icon: count > 0
+                      ? Badge(label: Text('$count'), child: icon)
+                      : icon,
+                );
+        },
+      ),
     );
   }
 }

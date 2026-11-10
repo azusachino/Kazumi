@@ -18,7 +18,7 @@ tracker failure.
 | Existing `BangumiSyncService` (status-only, two-way merge) | Fold into the new design: Bangumi becomes one tracker behind the shared interface. The old service and its merge planner are removed. |
 | Providers in v1 | Bangumi and AniList. |
 | When an episode counts as watched | 90% of a known duration. Seeking alone does not count; a manual mark exists. |
-| Bangumi sign-in | OAuth authorization code with refresh, plus a pasted personal token as fallback. |
+| Bangumi sign-in | OAuth authorization code with refresh. A pasted-token fallback was planned, then dropped: OAuth only for both trackers. |
 
 ## Prior art
 
@@ -147,16 +147,18 @@ score format), `Page.media` search, `Media.mediaListEntry` read,
 - Bangumi: OAuth code flow, redirect `kazumi://bangumi-auth`, token exchange
   at `https://bgm.tv/oauth/access_token`, refresh when within 1 hour of
   expiry. A refresh Bangumi rejects signs the account out; a network failure
-  keeps it. A pasted personal token is accepted and never refreshed.
-- AniList: implicit grant, redirect `kazumi://anilist-auth`, pasted token as
-  fallback.
+  keeps it.
+- AniList: implicit grant, redirect `kazumi://anilist-auth`.
+- Sign-in is OAuth only (owner decision, 2026-11-10): there is no pasted
+  token. A build without app IDs cannot sign in, so tracking is off.
+  Upstream's `bangumiAccessToken` and any pasted session are deleted at
+  startup.
 - Every token is validated with `viewer` before it is stored. Tokens live
   in the settings box, never in logs, backups, WebDAV or fixtures.
 - App IDs/secrets come from an untracked `--dart-define-from-file`
   (`.env.local.json`, gitignored), never committed.
-- `kazumi://` is already registered on Android, iOS and macOS. On Windows
-  and Linux, the pasted token is the supported path.
-- Existing `bangumiAccessToken` migrates to a pasted-token Bangumi account.
+- `kazumi://` is registered on Android, iOS and macOS. Windows and Linux
+  cannot complete the redirect, so they have no tracking sign-in.
 
 ### UI
 

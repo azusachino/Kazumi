@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:hive_ce/hive.dart';
 import 'package:kazumi/services/storage/settings_keys.dart';
 
@@ -76,6 +77,8 @@ class AniListAccount {
     );
   }
 
+  /// Tests only: production sign-in goes through OAuth.
+  @visibleForTesting
   Future<void> signInWithToken(String pasted) async {
     final token = pasted.trim();
     if (token.isEmpty) throw const TrackerAuthException();

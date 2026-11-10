@@ -195,14 +195,13 @@ void main() {
       expect(account.kind, isEmpty);
     },
   );
-  test('migration adopts legacy only once, even after sign out', () async {
+  test('startup discards the legacy token and pasted sessions', () async {
     await settings.put(SettingsKeys.bangumiAccessToken.name, 'legacy');
-    await account.migrate();
-    expect(await account.validToken(), 'legacy');
-    await account.signOut();
-    await account.migrate();
+    await account.signInWithToken('pasted');
+    await account.discardPastedTokens();
+    expect(settings.get(SettingsKeys.bangumiAccessToken.name), isNull);
+    expect(account.isSignedIn, isFalse);
     expect(await account.validToken(), isNull);
-    expect(settings.get(SettingsKeys.bangumiAccessToken.name), 'legacy');
   });
   test('the OAuth deep link is routed with its query intact', () {
     final uri = Uri.parse('kazumi://bangumi-auth?code=abc&state=xyz');

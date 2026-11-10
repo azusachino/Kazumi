@@ -197,7 +197,7 @@ class GStorage {
       tracker: tracker,
       onSignIn: () => trackingSync.retryFailed(TrackerId.bangumi),
     );
-    await bangumiAccount.migrate();
+    await bangumiAccount.discardPastedTokens();
     anilistAccount = AniListAccount(
       settings: _setting,
       tracker: anilistTracker,

@@ -576,11 +576,6 @@ class SettingsKeys {
     '',
     group: SettingGroup.bangumi,
   );
-  static const bangumiAccountMigrated = SettingKey<bool>(
-    _SettingBoxKey.bangumiAccountMigrated,
-    false,
-    group: SettingGroup.bangumi,
-  );
   static const bangumiExcludedSubjectIds = SettingKey<List<String>>(
     'bangumiExcludedSubjectIds',
     <String>[],
@@ -730,7 +725,6 @@ class SettingsKeys {
     bangumiAccountExpiry,
     bangumiAccountUsername,
     bangumiAccountKind,
-    bangumiAccountMigrated,
     bangumiExcludedSubjectIds,
     brightnessVolumeGesture,
     historySyncDeviceId,
@@ -845,7 +839,6 @@ class _SettingBoxKey {
       bangumiAccountExpiry = 'bangumiAccountExpiry',
       bangumiAccountUsername = 'bangumiAccountUsername',
       bangumiAccountKind = 'bangumiAccountKind',
-      bangumiAccountMigrated = 'bangumiAccountMigrated',
       brightnessVolumeGesture = 'brightnessVolumeGesture',
       historySyncDeviceId = 'historySyncDeviceId',
       historySyncSequence = 'historySyncSequence',

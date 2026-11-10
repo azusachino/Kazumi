@@ -18,18 +18,9 @@ class BangumiSyncPage extends StatefulWidget {
 }
 
 class _BangumiSyncPageState extends State<BangumiSyncPage> {
-  final _bangumiToken = TextEditingController();
-  final _anilistToken = TextEditingController();
   bool _busy = false;
   String? _message;
   bool _failed = false;
-
-  @override
-  void dispose() {
-    _bangumiToken.dispose();
-    _anilistToken.dispose();
-    super.dispose();
-  }
 
   Future<void> _run(Future<String> Function() action) async {
     if (_busy) return;
@@ -49,8 +40,6 @@ class _BangumiSyncPageState extends State<BangumiSyncPage> {
     required String username,
     required bool signedIn,
     required bool oauthAvailable,
-    required TextEditingController token,
-    required Future<void> Function(String) signIn,
     required Future<void> Function() signOut,
     required Uri Function() authorizeUrl,
     Widget? extraAction,
@@ -60,26 +49,14 @@ class _BangumiSyncPageState extends State<BangumiSyncPage> {
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             Text(title, style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 8),
-            Text(signedIn ? '已登录 · $username' : '尚未登录'),
+            Text(signedIn
+                ? '已登录 · $username'
+                : oauthAvailable
+                    ? '尚未登录'
+                    : '此版本未配置 $title 应用，无法登录'),
             const SizedBox(height: 16),
-            TextField(
-              controller: token,
-              enabled: !_busy,
-              obscureText: true,
-              autocorrect: false,
-              enableSuggestions: false,
-              decoration: const InputDecoration(labelText: '粘贴 Access Token', border: OutlineInputBorder()),
-            ),
             Wrap(spacing: 8, children: [
-              TextButton(
-                onPressed: _busy ? null : () => _run(() async {
-                  await signIn(token.text);
-                  token.clear();
-                  return '已登录';
-                }),
-                child: const Text('验证并登录'),
-              ),
-              if (oauthAvailable)
+              if (oauthAvailable && !signedIn)
                 TextButton(
                   onPressed: _busy ? null : () => _run(() async {
                     if (!await launchUrl(authorizeUrl(), mode: LaunchMode.externalApplication)) {
@@ -125,8 +102,6 @@ class _BangumiSyncPageState extends State<BangumiSyncPage> {
             username: bangumi.username,
             signedIn: bangumi.isSignedIn,
             oauthAvailable: bangumi.isOAuthAvailable,
-            token: _bangumiToken,
-            signIn: bangumi.signInWithToken,
             signOut: bangumi.signOut,
             authorizeUrl: bangumi.buildAuthorizeUrl,
             extraAction: FilledButton.tonalIcon(
@@ -147,8 +122,6 @@ class _BangumiSyncPageState extends State<BangumiSyncPage> {
             username: anilist.username,
             signedIn: anilist.isSignedIn,
             oauthAvailable: anilist.isOAuthAvailable,
-            token: _anilistToken,
-            signIn: anilist.signInWithToken,
             signOut: anilist.signOut,
             authorizeUrl: anilist.buildAuthorizeUrl,
           ),

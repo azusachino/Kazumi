@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:math';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:hive_ce/hive.dart';
 import 'package:kazumi/services/storage/settings_keys.dart';
 
@@ -54,27 +55,15 @@ class BangumiAccount {
       settings.get(SettingsKeys.bangumiAccountToken.name, defaultValue: '')
           as String;
 
-  Future<void> migrate() async {
-    if (settings.get(
-          SettingsKeys.bangumiAccountMigrated.name,
-          defaultValue: false,
-        ) ==
-        true) {
-      return;
-    }
-    final legacy =
-        (settings.get(SettingsKeys.bangumiAccessToken.name, defaultValue: '')
-                as String)
-            .trim();
-    if (_token.isEmpty && legacy.isNotEmpty) {
-      await settings.putAll({
-        SettingsKeys.bangumiAccountToken.name: legacy,
-        SettingsKeys.bangumiAccountKind.name: 'pasted',
-      });
-    }
-    await settings.put(SettingsKeys.bangumiAccountMigrated.name, true);
+  /// Sign-in is OAuth only. Drops upstream Kazumi's pasted access token and
+  /// any pasted session, so no hand-entered token stays on the device.
+  Future<void> discardPastedTokens() async {
+    await settings.delete(SettingsKeys.bangumiAccessToken.name);
+    if (isSignedIn && kind != 'oauth') await signOut();
   }
 
+  /// Tests only: production sign-in goes through OAuth.
+  @visibleForTesting
   Future<void> signInWithToken(String pasted) async {
     final token = pasted.trim();
     if (token.isEmpty) throw const TrackerAuthException();

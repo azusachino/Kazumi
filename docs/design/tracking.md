@@ -221,15 +221,14 @@ Where the code differs from, or adds to, the design above:
   Bangumi; removal is local only.
 - Slice 5 ran on terra instead of luna because of its size.
 
-## Reusing Hana's app registrations
+## App registrations
 
-Redirect URIs are build-time values (`BANGUMI_REDIRECT_URI`,
-`ANILIST_REDIRECT_URI`, default `kazumi://…`). The owner's Bangumi app and
-AniList client are registered with Hana's `hana://bangumi-auth` and
-`hana://anilist-auth`, so the macOS app also registers the `hana` scheme and
-`.env.local.json` sets both URIs to the `hana://` values. Android is left on
-`kazumi://` only: registering `hana` there would make Android ask which app
-opens the redirect whenever Hana is installed.
+Kazumi has its own Bangumi app and AniList client, registered with
+`kazumi://bangumi-auth` and `kazumi://anilist-auth`. Reusing Hana's
+registrations (`hana://…`) was tried and dropped: on a phone with Hana
+installed, Android hands the redirect to Hana. Redirect URIs remain
+build-time values (`BANGUMI_REDIRECT_URI`, `ANILIST_REDIRECT_URI`) that
+default to the `kazumi://` URIs.
 
 ## Not in v1
 

@@ -10,7 +10,6 @@
 			<key>CFBundleURLSchemes</key>
 			<array>
 				<string>kazumi</string>
-				<string>hana</string>
 			</array>
 		</dict>
 	</array>

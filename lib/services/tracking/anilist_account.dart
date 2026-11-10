@@ -42,10 +42,12 @@ class AniListAccount {
   Uri buildAuthorizeUrl() {
     if (!isOAuthAvailable) throw StateError('AniList OAuth unavailable');
     _started = clock();
+    // No redirect_uri: AniList rejects a custom-scheme one on device and
+    // falls back to the client's single registered redirect (as Hana and
+    // Mihon do). redirectUri is still used to accept the callback.
     return Uri.https('anilist.co', '/api/v2/oauth/authorize', {
       'client_id': clientId,
       'response_type': 'token',
-      'redirect_uri': redirectUri,
     });
   }
 

@@ -77,7 +77,6 @@ void main() {
     expect(account.buildAuthorizeUrl().queryParameters, {
       'client_id': 'client',
       'response_type': 'token',
-      'redirect_uri': 'kazumi://anilist-auth',
     });
     await expectLater(
       account.handleRedirect(
@@ -109,8 +108,8 @@ void main() {
       redirectUri: 'hana://anilist-auth',
     );
     expect(
-      custom.buildAuthorizeUrl().queryParameters['redirect_uri'],
-      'hana://anilist-auth',
+      custom.buildAuthorizeUrl().queryParameters.containsKey('redirect_uri'),
+      isFalse,
     );
     await expectLater(
       custom.handleRedirect(

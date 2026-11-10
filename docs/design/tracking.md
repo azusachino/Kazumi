@@ -1,6 +1,8 @@
 # Tracking redesign (fork only)
 
-Status: plan, 2026-11-10. Branch `feat/tracking` on `azusachino/Kazumi`.
+Status: implemented on `feat/tracking` (2026-11-10), not yet verified with
+live accounts; see "Implementation notes". Branch `feat/tracking` on
+`azusachino/Kazumi`.
 This fork is used only by its owner; nothing here goes upstream.
 
 ## Goal
@@ -193,6 +195,31 @@ one at a time in this checkout.
 - Register a Bangumi app (callback `kazumi://bangumi-auth`) before slice 4.
 - Register an AniList client (redirect `kazumi://anilist-auth`) before
   slice 6.
+
+## Implementation notes
+
+Where the code differs from, or adds to, the design above:
+
+- Bindings carry a random generation minted at bind time; a queued write
+  whose generation no longer matches is dropped before the remote read and
+  again before the write. A request already in flight when a binding is
+  removed is not cancelled, so at most that one write lands.
+- An explicit status change always wins over derived rules; the "keep
+  remote completed" rule and `statusLocked` apply only to derived status.
+- A new enqueue clears a row's failure; signing in retries that tracker's
+  failed rows.
+- Errors that are not `TrackerException` are retried like server errors.
+- Removing a Bangumi binding records an opt-out so the show is not re-bound
+  on the next watch; "开始追踪" clears it.
+- Editing the episode offset mints a new binding generation, which drops
+  writes queued under the old offset; the next watch re-queues.
+- The watched signal compares consecutive saved progress samples within a
+  session. Opening an episode already past 90% does not count, but a seek
+  from early in the episode to the end does; fixing that needs seek events
+  from the player.
+- Removing a show from the local list no longer offers to mark it dropped on
+  Bangumi; removal is local only.
+- Slice 5 ran on terra instead of luna because of its size.
 
 ## Not in v1
 

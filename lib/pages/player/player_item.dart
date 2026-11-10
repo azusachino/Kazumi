@@ -11,6 +11,7 @@ import 'package:kazumi/pages/player/player_screenshot_sheet.dart';
 import 'package:kazumi/pages/player/controller/player_screenshot_controller.dart';
 import 'package:kazumi/pages/player/syncplay_sheet.dart';
 import 'package:kazumi/utils/constants.dart';
+import 'package:kazumi/modules/bangumi/bangumi_title.dart';
 import 'package:kazumi/services/logging/logger.dart';
 import 'package:kazumi/services/player/pip_utils.dart';
 import 'package:kazumi/services/sync/webdav.dart';
@@ -637,9 +638,7 @@ class _PlayerItemState extends State<PlayerItem>
 
       final canSkipToPrevious = currentEpisode > 1;
       final canSkipToNext = currentEpisode < currentRoadData.data.length;
-      final bangumiTitle = videoPageController.bangumiItem.nameCn.isNotEmpty
-          ? videoPageController.bangumiItem.nameCn
-          : videoPageController.bangumiItem.name;
+      final bangumiTitle = videoPageController.bangumiItem.displayTitle;
 
       unawaited(
         _audioController.updateSession(

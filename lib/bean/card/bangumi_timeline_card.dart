@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:kazumi/bean/card/network_img_layer.dart';
 import 'package:kazumi/modules/bangumi/bangumi_item.dart';
+import 'package:kazumi/modules/bangumi/bangumi_title.dart';
 
 class BangumiTimelineCard extends StatelessWidget {
   const BangumiTimelineCard({
@@ -62,8 +63,7 @@ class BangumiTimelineCard extends StatelessWidget {
           .toSet(),
     ];
     if (metadata.isNotEmpty) return metadata.take(3).join(' · ');
-    final originalName = bangumiItem.name.trim();
-    return originalName != title ? originalName : '';
+    return bangumiItem.secondaryTitle.trim();
   }
 
   @override
@@ -103,9 +103,7 @@ class BangumiTimelineCard extends StatelessWidget {
   Widget _buildDetails(BuildContext context) {
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
-    final translatedName = bangumiItem.nameCn.trim();
-    final title =
-        translatedName.isNotEmpty ? translatedName : bangumiItem.name.trim();
+    final title = bangumiItem.displayTitle.trim();
     final supportingText = _supportingText(title);
 
     return Column(

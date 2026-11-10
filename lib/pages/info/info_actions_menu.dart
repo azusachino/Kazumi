@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:kazumi/bean/dialog/dialog.dart';
 import 'package:kazumi/bean/widget/kazumi_menu.dart';
 import 'package:kazumi/modules/bangumi/bangumi_item.dart';
+import 'package:kazumi/modules/bangumi/bangumi_title.dart';
 import 'package:kazumi/services/logging/logger.dart';
 import 'package:kazumi/utils/device.dart';
 import 'package:saver_gallery/saver_gallery.dart';
@@ -24,9 +25,7 @@ class InfoActionsMenu extends StatefulWidget {
 class _InfoActionsMenuState extends State<InfoActionsMenu> {
   bool _savingCover = false;
 
-  String get _title => widget.bangumiItem.nameCn.trim().isEmpty
-      ? widget.bangumiItem.name
-      : widget.bangumiItem.nameCn;
+  String get _title => widget.bangumiItem.displayTitle;
 
   void _notify(String message) {
     if (mounted) KazumiDialog.showToast(context: context, message: message);

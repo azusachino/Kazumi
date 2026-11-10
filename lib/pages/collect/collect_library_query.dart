@@ -1,5 +1,6 @@
 import 'package:kazumi/modules/collect/collect_module.dart';
 import 'package:kazumi/modules/collect/collect_type.dart';
+import 'package:kazumi/modules/bangumi/bangumi_title.dart';
 
 enum CollectSort {
   recentlyChanged('最近变更'),
@@ -58,7 +59,7 @@ class CollectLibraryQuery {
 
   static String titleOf(CollectedBangumi entry) {
     final item = entry.bangumiItem;
-    return item.nameCn.trim().isNotEmpty ? item.nameCn : item.name;
+    return item.displayTitle;
   }
 
   static DateTime _airDate(CollectedBangumi entry) =>

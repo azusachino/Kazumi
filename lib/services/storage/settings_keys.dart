@@ -261,6 +261,11 @@ class SettingsKeys {
     null,
     group: SettingGroup.interface,
   );
+  static const preferOriginalTitle = SettingKey<bool>(
+    _SettingBoxKey.preferOriginalTitle,
+    false,
+    group: SettingGroup.interface,
+  );
   static const enableGitProxy = SettingKey<bool>(
     _SettingBoxKey.enableGitProxy,
     true,
@@ -707,6 +712,7 @@ class SettingsKeys {
     proxyUrl,
     proxyTestUrl,
     showRating,
+    preferOriginalTitle,
     defaultCollectLayout,
     downloadParallelEpisodes,
     downloadParallelSegments,
@@ -790,6 +796,7 @@ class _SettingBoxKey {
       showPlayerError = 'showPlayerError',
       oledEnhance = 'oledEnhance',
       displayMode = 'displayMode',
+      preferOriginalTitle = 'preferOriginalTitle',
       enableGitProxy = 'enableGitProxy',
       enableBangumiProxy = 'enableBangumiProxy',
       enableSystemProxy = 'enableSystemProxy',

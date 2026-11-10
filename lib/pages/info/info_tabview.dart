@@ -9,6 +9,7 @@ import 'package:kazumi/bean/card/staff_card.dart';
 import 'package:kazumi/bean/card/network_img_layer.dart';
 import 'package:skeletonizer/skeletonizer.dart';
 import 'package:kazumi/modules/bangumi/bangumi_item.dart';
+import 'package:kazumi/modules/bangumi/bangumi_title.dart';
 import 'package:kazumi/modules/bangumi/bangumi_relation.dart';
 import 'package:kazumi/modules/comments/comment_item.dart';
 import 'package:kazumi/modules/characters/character_item.dart';
@@ -531,9 +532,7 @@ class _RelatedBangumiCardH extends StatelessWidget {
         MediaQuery.textScalerOf(context).clamp(maxScaleFactor: 1.1);
     final relationLabel = relation.relation.isEmpty ? '关联' : relation.relation;
     final bangumiItem = relation.toBangumiItem();
-    final title = bangumiItem.nameCn.isEmpty
-        ? bangumiItem.name.trim()
-        : bangumiItem.nameCn.trim();
+    final title = bangumiItem.displayTitle.trim();
 
     return Card(
       elevation: 0,

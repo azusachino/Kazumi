@@ -1,5 +1,6 @@
 import 'package:kazumi/modules/download/download_module.dart';
 import 'package:kazumi/modules/history/history_module.dart';
+import 'package:kazumi/modules/bangumi/bangumi_title.dart';
 import 'package:kazumi/pages/download/download_controller.dart';
 import 'package:kazumi/pages/video/video_playback_args.dart';
 import 'package:kazumi/plugins/plugins.dart';
@@ -82,9 +83,7 @@ class HistoryPlaybackService {
       return OnlineVideoPlaybackArgs(
         bangumiItem: history.bangumiItem,
         plugin: targetPlugin,
-        title: history.bangumiItem.nameCn.isEmpty
-            ? history.bangumiItem.name
-            : history.bangumiItem.nameCn,
+        title: history.bangumiItem.displayTitle,
         src: history.lastSrc,
         roads: roads,
       );

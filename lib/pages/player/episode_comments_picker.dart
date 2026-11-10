@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:kazumi/modules/bangumi/episode_item.dart';
+import 'package:kazumi/modules/bangumi/bangumi_title.dart';
+import 'package:kazumi/services/storage/storage.dart';
 
 class EpisodeCommentsPicker extends StatelessWidget {
   const EpisodeCommentsPicker({
@@ -49,8 +51,12 @@ class EpisodeCommentsPicker extends StatelessWidget {
                 separatorBuilder: (context, index) => const SizedBox(height: 3),
                 itemBuilder: (context, index) {
                   final info = episodes[index];
-                  final title =
-                      info.nameCn.isNotEmpty ? info.nameCn : info.name;
+                  final title = bangumiTitle(
+                    info.name,
+                    info.nameCn,
+                    preferOriginal:
+                        GStorage.getSetting(SettingsKeys.preferOriginalTitle),
+                  );
                   final selected = index + 1 == selectedEpisode;
                   return Material(
                     color: selected

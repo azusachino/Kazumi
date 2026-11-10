@@ -5,6 +5,7 @@ import 'package:kazumi/services/tracking/models.dart';
 import 'package:kazumi/services/tracking/stores.dart';
 import 'package:kazumi/services/tracking/tracker.dart';
 import 'package:kazumi/services/tracking/tracking_sync.dart';
+import 'package:logger/logger.dart';
 
 class MemoryBindings implements BindingStore {
   final Map<String, TrackingBinding> rows = {};
@@ -46,6 +47,7 @@ class FakeTracker implements Tracker {
   final TrackerId id;
   RemoteEntry? remote;
   TrackerException? failure;
+  Object? Function(String)? readFailure;
   final calls = <(int?, TrackStatus?, int?)>[];
   int reads = 0;
   Completer<void>? blockedRead;
@@ -53,6 +55,8 @@ class FakeTracker implements Tracker {
   Future<RemoteEntry?> readEntry(String token, String remoteId) async {
     reads++;
     if (blockedRead != null) await blockedRead!.future;
+    final unexpected = readFailure?.call(remoteId);
+    if (unexpected != null) throw unexpected;
     if (failure != null) throw failure!;
     return remote;
   }
@@ -234,6 +238,41 @@ void main() {
       expect(h.outbox.rows.values.single.error, 'Sync failed after retries');
     });
   }
+  test(
+    'unexpected tracker error backs off and other rows still drain',
+    () async {
+      final previousLevel = Logger.level;
+      Logger.level = Level.off;
+      addTearDown(() => Logger.level = previousLevel);
+      await h.bind(remote: 'bad');
+      await h.bind(subject: 2, remote: 'good');
+      for (final binding in await h.bindings.all()) {
+        await h.outbox.put(
+          OutboxEntry(
+            subjectId: binding.subjectId,
+            trackerId: binding.trackerId,
+            remoteId: binding.remoteId,
+            bindingGeneration: binding.generation,
+            progress: 1,
+          ),
+        );
+      }
+      h.a.readFailure = (remote) =>
+          remote == 'bad' ? StateError('secret') : null;
+      final started = h.now;
+      await h.sync.drain();
+      expect(h.a.calls, [(1, TrackStatus.current, null)]);
+      final row = h.outbox.rows.values.single;
+      expect(row.subjectId, 1);
+      expect(row.attempts, 1);
+      expect(row.retryAt, started.add(const Duration(seconds: 30)));
+      for (var i = 0; i < 4; i++) {
+        h.now = h.outbox.rows.values.single.retryAt!;
+        await h.sync.drain();
+      }
+      expect(h.outbox.rows.values.single.error, 'Sync failed after retries');
+    },
+  );
   test('auth fails tracker rows while other tracker drains', () async {
     await h.bind();
     await h.bind(id: TrackerId.anilist);

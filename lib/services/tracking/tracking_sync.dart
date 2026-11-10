@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:kazumi/services/logging/logger.dart';
+
 import 'models.dart';
 import 'stores.dart';
 import 'tracker.dart';
@@ -253,6 +255,10 @@ class TrackingSync {
       await _dropIfUnchanged(row);
     } on TrackerException catch (e) {
       await _handleFailure(tracker.id, row, e);
+    } catch (_) {
+      // Exception text and stack traces may contain credentials or headers.
+      KazumiLogger().e('Tracking: unexpected ${tracker.id.name} sync error');
+      await _handleFailure(tracker.id, row, const TrackerServerException());
     }
   }
 

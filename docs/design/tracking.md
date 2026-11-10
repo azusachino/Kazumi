@@ -283,22 +283,17 @@ It follows the owner's animeko setting (fork PR #2,
   history lists, search results, player and download titles, comments
   sheet headers); character and staff names are unchanged.
 
-## Building and verifying the fork
+## Collection button as the tracking entry
 
-- Toolchain is pinned in `.mise.toml` (Flutter, CMake, Ninja; `ech_http`
-  builds native code and needs CMake and Ninja).
-- `flutter analyze` reports 17 pre-existing infos and exits 1 even then.
-  Compare the issue count with 17, not the exit code.
-- `flutter build macos` rewrites `macos/Podfile` (deployment target 10.15 →
-  12.0) and `project.pbxproj`. Revert both after a build; they are not part
-  of any change.
-- Release builds: `--dart-define-from-file=.env.local.json` (app IDs) and a
-  fork version such as `--build-name 2.4.3-fork.3`, so installed builds are
-  distinguishable from upstream 2.4.3. macOS shortens a non-numeric build
-  name (`2.4.3-fork.3` shows as `2.4.3.3`).
-- Android release APKs are signed with the debug key, so they install fresh
-  but cannot replace an upstream Kazumi install without uninstalling it.
-  Android SDK on harus-macmini: `ANDROID_HOME=/opt/homebrew/share/android-commandlinetools`.
+The info page's collection-status button ("在看", "未追", …) is the single
+entry: it keeps its label, adds the number of bound trackers, and opens the
+tracking sheet. The sheet's top "收藏" row sets Kazumi's local status
+(including 未追, which removes locally) through the existing collection
+paths, so trackers receive the status as before. The separate 追踪 icon is
+gone. The Bangumi block shows the subject's display title (follows 显示原名).
+
+Build, verification and upstream-sync notes live in the owner's workstation
+KB (`docs/projects/kazumi.md`), not in this repository.
 
 ## App registrations
 

@@ -10,6 +10,7 @@ sealed class KazumiDeepLink {
         // Plain digits only: no sign, whitespace or leading zeros.
         if (id != null && id > 0 && '$id' == raw) return BangumiDeepLink(id);
       }
+      if (uri.host == 'bangumi-auth') return BangumiAuthDeepLink(uri);
       if (uri.host == 'search') {
         final query = uri.queryParameters['query']?.trim() ?? '';
         if (query.isNotEmpty) return SearchDeepLink(query);
@@ -19,6 +20,11 @@ sealed class KazumiDeepLink {
     }
     return null;
   }
+}
+
+final class BangumiAuthDeepLink extends KazumiDeepLink {
+  const BangumiAuthDeepLink(this.uri);
+  final Uri uri;
 }
 
 final class BangumiDeepLink extends KazumiDeepLink {

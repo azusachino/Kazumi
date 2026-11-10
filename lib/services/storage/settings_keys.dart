@@ -535,6 +535,36 @@ class SettingsKeys {
     '',
     group: SettingGroup.bangumi,
   );
+  static const bangumiAccountToken = SettingKey<String>(
+    _SettingBoxKey.bangumiAccountToken,
+    '',
+    group: SettingGroup.bangumi,
+  );
+  static const bangumiAccountRefreshToken = SettingKey<String>(
+    _SettingBoxKey.bangumiAccountRefreshToken,
+    '',
+    group: SettingGroup.bangumi,
+  );
+  static const bangumiAccountExpiry = SettingKey<int>(
+    _SettingBoxKey.bangumiAccountExpiry,
+    0,
+    group: SettingGroup.bangumi,
+  );
+  static const bangumiAccountUsername = SettingKey<String>(
+    _SettingBoxKey.bangumiAccountUsername,
+    '',
+    group: SettingGroup.bangumi,
+  );
+  static const bangumiAccountKind = SettingKey<String>(
+    _SettingBoxKey.bangumiAccountKind,
+    '',
+    group: SettingGroup.bangumi,
+  );
+  static const bangumiAccountMigrated = SettingKey<bool>(
+    _SettingBoxKey.bangumiAccountMigrated,
+    false,
+    group: SettingGroup.bangumi,
+  );
   static const bangumiSyncPriority = SettingKey<int>(
     _SettingBoxKey.bangumiSyncPriority,
     0,
@@ -679,6 +709,12 @@ class SettingsKeys {
     onboardingCompleted,
     bangumiSyncEnable,
     bangumiAccessToken,
+    bangumiAccountToken,
+    bangumiAccountRefreshToken,
+    bangumiAccountExpiry,
+    bangumiAccountUsername,
+    bangumiAccountKind,
+    bangumiAccountMigrated,
     bangumiSyncPriority,
     bangumiImmediateSyncToastEnable,
     brightnessVolumeGesture,
@@ -786,6 +822,12 @@ class _SettingBoxKey {
       shortcutDialogShown = 'shortcutDialogShown',
       bangumiSyncEnable = 'bangumiSyncEnable',
       bangumiAccessToken = 'bangumiAccessToken',
+      bangumiAccountToken = 'bangumiAccountToken',
+      bangumiAccountRefreshToken = 'bangumiAccountRefreshToken',
+      bangumiAccountExpiry = 'bangumiAccountExpiry',
+      bangumiAccountUsername = 'bangumiAccountUsername',
+      bangumiAccountKind = 'bangumiAccountKind',
+      bangumiAccountMigrated = 'bangumiAccountMigrated',
       bangumiSyncPriority = 'bangumiSyncPriority',
       bangumiImmediateSyncToastEnable = 'bangumiImmediateSyncToastEnable',
       brightnessVolumeGesture = 'brightnessVolumeGesture',

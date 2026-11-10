@@ -43,6 +43,7 @@
                 <category android:name="android.intent.category.DEFAULT"/>
                 <category android:name="android.intent.category.BROWSABLE"/>
                 <data android:scheme="kazumi" android:host="bangumi"/>
+                <data android:scheme="kazumi" android:host="bangumi-auth"/>
                 <data android:scheme="kazumi" android:host="search"/>
             </intent-filter>
         </activity>

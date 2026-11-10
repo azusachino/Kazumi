@@ -109,19 +109,24 @@ class HistoryRepository implements IHistoryRepository {
         _progressSyncAppender = progressSyncAppender ?? _appendProgressSync,
         _deleteSyncAppender = deleteSyncAppender ?? _appendDeleteSync,
         _clearSyncAppender = clearSyncAppender ?? _appendClearSync,
-        _episodeWatchedAppender = episodeWatchedAppender ??
-            ((subjectId, {required progress}) => GStorage.trackingSync
-                .enqueue(subjectId, progress: progress));
+        _episodeWatchedAppender = episodeWatchedAppender;
 
   final Box<History> _historiesBox;
   final bool Function() _privateModeReader;
   final HistoryProgressSyncAppender _progressSyncAppender;
   final HistoryDeleteSyncAppender _deleteSyncAppender;
   final HistoryClearSyncAppender _clearSyncAppender;
-  final EpisodeWatchedAppender _episodeWatchedAppender;
+  final EpisodeWatchedAppender? _episodeWatchedAppender;
   final Map<String, Duration> _sessionProgress = {};
   final HistoryStorageCoordinator _storageCoordinator =
       HistoryStorageCoordinator();
+
+  Future<void> _appendWatched(BangumiItem item, int progress) {
+    final appender = _episodeWatchedAppender;
+    return appender == null
+        ? GStorage.bangumiBindingManager.watched(item, progress)
+        : appender(item.id, progress: progress);
+  }
 
   static Future<void> _appendProgressSync({
     required History history,
@@ -238,10 +243,7 @@ class HistoryRepository implements IHistoryRepository {
               previous < threshold &&
               playbackProgress >= threshold) {
             try {
-              await _episodeWatchedAppender(
-                identity.bangumiItem.id,
-                progress: episode,
-              );
+              await _appendWatched(identity.bangumiItem, episode);
             } catch (e, stackTrace) {
               KazumiLogger().w(
                 'Tracking: failed to enqueue watched episode',
@@ -372,10 +374,7 @@ class HistoryRepository implements IHistoryRepository {
   Future<void> markEpisodeWatched(PlaybackHistoryIdentity identity) async {
     if (!identity.canRecord || getPrivateMode()) return;
     try {
-      await _episodeWatchedAppender(
-        identity.bangumiItem.id,
-        progress: identity.episodeNumber,
-      );
+      await _appendWatched(identity.bangumiItem, identity.episodeNumber);
     } catch (e, stackTrace) {
       KazumiLogger().w(
         'Tracking: failed to enqueue manually watched episode',

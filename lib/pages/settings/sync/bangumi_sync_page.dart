@@ -18,14 +18,16 @@ class BangumiSyncPage extends StatefulWidget {
 }
 
 class _BangumiSyncPageState extends State<BangumiSyncPage> {
-  final _token = TextEditingController();
+  final _bangumiToken = TextEditingController();
+  final _anilistToken = TextEditingController();
   bool _busy = false;
   String? _message;
   bool _failed = false;
 
   @override
   void dispose() {
-    _token.dispose();
+    _bangumiToken.dispose();
+    _anilistToken.dispose();
     super.dispose();
   }
 
@@ -42,55 +44,116 @@ class _BangumiSyncPageState extends State<BangumiSyncPage> {
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final account = GStorage.bangumiAccount;
-    return ValueListenableBuilder(
-      valueListenable: account.settings.listenable(),
-      builder: (context, _, _) => SettingsDetailScaffold(
-      title: const Text('追番同步'),
-      body: SyncPageBody(maxWidth: 720, children: [
-        const SyncPageIntro(icon: Icons.bookmarks_rounded, title: 'Bangumi',
-            description: '同步想看、在看、看过等追番状态。'),
-        TonalCard(child: Padding(
+  Widget _account({
+    required String title,
+    required String username,
+    required bool signedIn,
+    required bool oauthAvailable,
+    required TextEditingController token,
+    required Future<void> Function(String) signIn,
+    required Future<void> Function() signOut,
+    required Uri Function() authorizeUrl,
+    Widget? extraAction,
+  }) => TonalCard(
+        child: Padding(
           padding: const EdgeInsets.all(20),
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            Text(account.isSignedIn ? '已登录 · ${account.username}' : '尚未登录'),
+            Text(title, style: Theme.of(context).textTheme.titleLarge),
+            const SizedBox(height: 8),
+            Text(signedIn ? '已登录 · $username' : '尚未登录'),
             const SizedBox(height: 16),
-            TextField(controller: _token, enabled: !_busy, obscureText: true,
-                autocorrect: false, enableSuggestions: false,
-                decoration: const InputDecoration(labelText: 'Access Token', border: OutlineInputBorder())),
-            Wrap(spacing: 12, children: [
-              TextButton(onPressed: _busy ? null : () => _run(() async {
-                await account.signInWithToken(_token.text);
-                _token.clear();
-                return '已登录 ${account.username}';
-              }), child: const Text('验证并登录')),
-              if (account.isOAuthAvailable)
-                TextButton(onPressed: _busy ? null : () => _run(() async {
-                  if (!await launchUrl(account.buildAuthorizeUrl(), mode: LaunchMode.externalApplication)) {
-                    throw StateError('Cannot open browser');
-                  }
-                  return '请在浏览器中完成授权';
-                }), child: const Text('使用 Bangumi 登录')),
-              if (account.isSignedIn)
-                TextButton(onPressed: _busy ? null : () => _run(() async {
-                  await account.signOut();
-                  return '已退出登录';
-                }), child: const Text('退出登录')),
+            TextField(
+              controller: token,
+              enabled: !_busy,
+              obscureText: true,
+              autocorrect: false,
+              enableSuggestions: false,
+              decoration: const InputDecoration(labelText: '粘贴 Access Token', border: OutlineInputBorder()),
+            ),
+            Wrap(spacing: 8, children: [
+              TextButton(
+                onPressed: _busy ? null : () => _run(() async {
+                  await signIn(token.text);
+                  token.clear();
+                  return '已登录';
+                }),
+                child: const Text('验证并登录'),
+              ),
+              if (oauthAvailable)
+                TextButton(
+                  onPressed: _busy ? null : () => _run(() async {
+                    if (!await launchUrl(authorizeUrl(), mode: LaunchMode.externalApplication)) {
+                      throw StateError('Cannot open browser');
+                    }
+                    return '请在浏览器中完成授权';
+                  }),
+                  child: const Text('浏览器授权登录'),
+                ),
+              if (signedIn)
+                TextButton(
+                  onPressed: _busy ? null : () => _run(() async {
+                    await signOut();
+                    return '已退出登录';
+                  }),
+                  child: const Text('退出登录'),
+                ),
+              ?extraAction,
             ]),
           ]),
-        )),
-        FilledButton.icon(
-          onPressed: _busy || !account.isSignedIn ? null : () => _run(() async {
-            final count = await BangumiImport(account, account.tracker as BangumiTracker,
-                CollectCrudRepository()).run();
-            return '已导入 $count 部番剧';
-          }),
-          icon: const Icon(Icons.download_rounded), label: const Text('从 Bangumi 导入'),
         ),
-        if (_message != null) SyncFeedback(message: _message!, error: _failed),
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    final bangumi = GStorage.bangumiAccount;
+    final anilist = GStorage.anilistAccount;
+    return AnimatedBuilder(
+      animation: Listenable.merge([
+        bangumi.settings.listenable(),
+        anilist.settings.listenable(),
       ]),
+      builder: (context, _) => SettingsDetailScaffold(
+        title: const Text('追踪账号'),
+        body: SyncPageBody(maxWidth: 720, children: [
+          const SyncPageIntro(
+            icon: Icons.sync_alt_rounded,
+            title: '追踪账号',
+            description: '管理 Bangumi 和 AniList 账号，追踪进度与收藏状态。',
+          ),
+          _account(
+            title: 'Bangumi',
+            username: bangumi.username,
+            signedIn: bangumi.isSignedIn,
+            oauthAvailable: bangumi.isOAuthAvailable,
+            token: _bangumiToken,
+            signIn: bangumi.signInWithToken,
+            signOut: bangumi.signOut,
+            authorizeUrl: bangumi.buildAuthorizeUrl,
+            extraAction: FilledButton.tonalIcon(
+              onPressed: _busy || !bangumi.isSignedIn ? null : () => _run(() async {
+                final count = await BangumiImport(
+                  bangumi,
+                  bangumi.tracker as BangumiTracker,
+                  CollectCrudRepository(),
+                ).run();
+                return '已从 Bangumi 导入 $count 部番剧';
+              }),
+              icon: const Icon(Icons.download_rounded),
+              label: const Text('从 Bangumi 导入'),
+            ),
+          ),
+          _account(
+            title: 'AniList',
+            username: anilist.username,
+            signedIn: anilist.isSignedIn,
+            oauthAvailable: anilist.isOAuthAvailable,
+            token: _anilistToken,
+            signIn: anilist.signInWithToken,
+            signOut: anilist.signOut,
+            authorizeUrl: anilist.buildAuthorizeUrl,
+          ),
+          if (_message != null) SyncFeedback(message: _message!, error: _failed),
+        ]),
       ),
     );
   }

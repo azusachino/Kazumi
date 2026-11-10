@@ -47,10 +47,11 @@ class AppDeepLinks {
       if (session.isStale) return;
       if (link is BangumiAuthDeepLink || link is AniListAuthDeepLink) {
         KazumiLogger().w('Deep link: authorization failed');
+        KazumiDialog.showToast(message: '授权失败，请重试');
       } else {
         KazumiLogger().w('Deep link: failed to open', error: error);
+        KazumiDialog.showToast(message: '无法打开链接');
       }
-      KazumiDialog.showToast(message: '无法打开链接');
     }));
   }
 
@@ -66,8 +67,10 @@ class AppDeepLinks {
     switch (link) {
       case BangumiAuthDeepLink(:final uri):
         await GStorage.bangumiAccount.handleRedirect(uri);
+        if (!session.isStale) KazumiDialog.showToast(message: 'Bangumi 授权成功');
       case AniListAuthDeepLink(:final uri):
         await GStorage.anilistAccount.handleRedirect(uri);
+        if (!session.isStale) KazumiDialog.showToast(message: 'AniList 授权成功');
       case BangumiDeepLink(:final id):
         await _dialogs.run((task) async {
           final item = await task.loading(

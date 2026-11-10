@@ -19,6 +19,7 @@ import 'package:kazumi/pages/info/info_controller.dart';
 import 'package:kazumi/pages/info/info_tabview.dart';
 import 'package:kazumi/pages/info/rating_review_dialog.dart';
 import 'package:kazumi/pages/info/source_sheet.dart';
+import 'package:kazumi/pages/info/tracking_sheet.dart';
 import 'package:kazumi/plugins/plugins_controller.dart';
 import 'package:kazumi/services/logging/logger.dart';
 import 'package:kazumi/services/platform/desktop_window_config.dart';
@@ -364,6 +365,16 @@ class _InfoPageState extends State<InfoPage>
                   ),
                 ),
                 actions: [
+                  EmbeddedNativeControlArea(
+                    child: IconButton(
+                      tooltip: '追踪',
+                      onPressed: () => showTrackingSheet(
+                        context,
+                        infoController.bangumiItem,
+                      ),
+                      icon: const Icon(Icons.sync_alt_rounded),
+                    ),
+                  ),
                   if (innerBoxIsScrolled)
                     EmbeddedNativeControlArea(
                       child: CollectButton(

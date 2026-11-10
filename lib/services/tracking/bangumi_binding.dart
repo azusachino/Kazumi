@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:kazumi/modules/bangumi/bangumi_item.dart';
 import 'package:kazumi/modules/collect/collect_type.dart';
+import 'package:kazumi/services/storage/settings_keys.dart';
 
 import 'bangumi_account.dart';
 import 'models.dart';
@@ -16,24 +17,11 @@ class BangumiBindingManager {
   final TrackingSync sync;
   Future<void> _queue = Future.value();
 
-  Future<void> ensureBangumiBinding(BangumiItem item) {
+  Future<void> _queued(Future<void> Function() action) {
     final result = Completer<void>();
     _queue = _queue.then((_) async {
       try {
-        if (account.isSignedIn) {
-          final key = '${item.id}:${TrackerId.bangumi.name}';
-          if (await bindings.get(key) == null) {
-            await bindings.put(
-              TrackingBinding(
-                subjectId: item.id,
-                trackerId: TrackerId.bangumi,
-                remoteId: '${item.id}',
-                title: item.nameCn.isEmpty ? item.name : item.nameCn,
-                cover: item.images['medium'],
-              ),
-            );
-          }
-        }
+        await action();
         result.complete();
       } catch (error, stack) {
         result.completeError(error, stack);
@@ -41,6 +29,59 @@ class BangumiBindingManager {
     });
     return result.future;
   }
+
+  List<String> get _excludedSubjectIds {
+    final saved = account.settings.get(
+      SettingsKeys.bangumiExcludedSubjectIds.name,
+      defaultValue: const <String>[],
+    );
+    return saved is List ? saved.whereType<String>().toList() : <String>[];
+  }
+
+  Future<void> _ensureBinding(BangumiItem item) async {
+    final id = '${item.id}';
+    if (!account.isSignedIn || _excludedSubjectIds.contains(id)) {
+      return;
+    }
+    final key = '${item.id}:${TrackerId.bangumi.name}';
+    if (await bindings.get(key) != null) {
+      return;
+    }
+    await bindings.put(
+      TrackingBinding(
+        subjectId: item.id,
+        trackerId: TrackerId.bangumi,
+        remoteId: id,
+        title: item.nameCn.isEmpty ? item.name : item.nameCn,
+        cover: item.images['medium'],
+      ),
+    );
+  }
+
+  Future<void> ensureBangumiBinding(BangumiItem item) =>
+      _queued(() => _ensureBinding(item));
+
+  Future<void> stopTracking(int subjectId) => _queued(() async {
+    final ids = _excludedSubjectIds;
+    final id = '$subjectId';
+    if (!ids.contains(id)) {
+      ids.add(id);
+      await account.settings.put(
+        SettingsKeys.bangumiExcludedSubjectIds.name,
+        ids,
+      );
+    }
+    await bindings.delete('$subjectId:${TrackerId.bangumi.name}');
+  });
+
+  Future<void> startTracking(BangumiItem item) => _queued(() async {
+    final ids = _excludedSubjectIds..remove('${item.id}');
+    await account.settings.put(
+      SettingsKeys.bangumiExcludedSubjectIds.name,
+      ids,
+    );
+    await _ensureBinding(item);
+  });
 
   Future<void> statusChanged(BangumiItem item, CollectType type) async {
     final status = switch (type) {

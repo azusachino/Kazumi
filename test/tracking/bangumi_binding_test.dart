@@ -6,6 +6,7 @@ import 'package:kazumi/modules/bangumi/bangumi_item.dart';
 import 'package:kazumi/modules/collect/collect_type.dart';
 import 'package:kazumi/services/tracking/bangumi_account.dart';
 import 'package:kazumi/services/tracking/bangumi_binding.dart';
+import 'package:kazumi/services/storage/settings_keys.dart';
 import 'package:kazumi/services/tracking/tracker.dart';
 import 'package:kazumi/services/tracking/tracking_sync.dart';
 
@@ -68,6 +69,21 @@ void main() {
     final revision = outbox.rows['123:bangumi']!.revision;
     await manager.statusChanged(item, CollectType.none);
     expect(outbox.rows['123:bangumi']!.revision, revision);
+
+    await manager.stopTracking(item.id);
+    expect(bindings.rows.containsKey('123:bangumi'), isFalse);
+    expect(
+      settings.get(SettingsKeys.bangumiExcludedSubjectIds.name),
+      contains('123'),
+    );
+    await manager.watched(item, 4);
+    expect(bindings.rows.containsKey('123:bangumi'), isFalse);
+    await manager.startTracking(item);
+    expect(bindings.rows['123:bangumi']?.remoteId, '123');
+    expect(
+      settings.get(SettingsKeys.bangumiExcludedSubjectIds.name),
+      isNot(contains('123')),
+    );
     sync.dispose();
     await Hive.close();
     await dir.delete(recursive: true);

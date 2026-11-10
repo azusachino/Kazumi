@@ -581,6 +581,11 @@ class SettingsKeys {
     false,
     group: SettingGroup.bangumi,
   );
+  static const bangumiExcludedSubjectIds = SettingKey<List<String>>(
+    'bangumiExcludedSubjectIds',
+    <String>[],
+    group: SettingGroup.bangumi,
+  );
 
 
   static const brightnessVolumeGesture = SettingKey<bool>(
@@ -726,6 +731,7 @@ class SettingsKeys {
     bangumiAccountUsername,
     bangumiAccountKind,
     bangumiAccountMigrated,
+    bangumiExcludedSubjectIds,
     brightnessVolumeGesture,
     historySyncDeviceId,
     historySyncSequence,

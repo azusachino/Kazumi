@@ -5,6 +5,7 @@ import 'package:dio/dio.dart';
 import 'package:hive_ce/hive.dart';
 import 'package:kazumi/services/storage/settings_keys.dart';
 
+import 'oauth_redirect_uris.dart';
 import 'tracker.dart';
 
 class BangumiAccount {
@@ -16,6 +17,7 @@ class BangumiAccount {
     DateTime Function()? clock,
     this.clientId = const String.fromEnvironment('BANGUMI_APP_ID'),
     this.clientSecret = const String.fromEnvironment('BANGUMI_APP_SECRET'),
+    this.redirectUri = defaultBangumiRedirectUri,
   }) : clock = clock ?? DateTime.now,
        _dio = Dio(
          BaseOptions(
@@ -34,13 +36,12 @@ class BangumiAccount {
   final DateTime Function() clock;
   final String clientId;
   final String clientSecret;
+  final String redirectUri;
   final Dio _dio;
   String? _state;
   DateTime? _started;
   Future<String?>? _refreshing;
   int _generation = 0;
-  static const _redirect = 'kazumi://bangumi-auth';
-
   bool get isOAuthAvailable => clientId.isNotEmpty && clientSecret.isNotEmpty;
   bool get isSignedIn => _token.isNotEmpty;
   String get username =>
@@ -94,15 +95,16 @@ class BangumiAccount {
     return Uri.https('bgm.tv', '/oauth/authorize', {
       'client_id': clientId,
       'response_type': 'code',
-      'redirect_uri': _redirect,
+      'redirect_uri': redirectUri,
       'state': _state!,
     });
   }
 
   Future<void> handleRedirect(Uri uri) async {
     final now = clock();
-    if (uri.scheme != 'kazumi' ||
-        uri.host != 'bangumi-auth' ||
+    final redirect = Uri.parse(redirectUri);
+    if (uri.scheme != redirect.scheme ||
+        uri.host != redirect.host ||
         uri.hasPort ||
         uri.userInfo.isNotEmpty ||
         uri.path.isNotEmpty ||
@@ -124,7 +126,7 @@ class BangumiAccount {
     final data = await _exchange({
       'grant_type': 'authorization_code',
       'code': code,
-      'redirect_uri': _redirect,
+      'redirect_uri': redirectUri,
     });
     final token = data['access_token'] as String;
     final user = await tracker.viewer(token);

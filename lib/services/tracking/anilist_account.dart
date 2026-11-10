@@ -1,6 +1,7 @@
 import 'package:hive_ce/hive.dart';
 import 'package:kazumi/services/storage/settings_keys.dart';
 
+import 'oauth_redirect_uris.dart';
 import 'tracker.dart';
 
 class AniListAccount {
@@ -10,6 +11,7 @@ class AniListAccount {
     this.onSignIn,
     DateTime Function()? clock,
     this.clientId = const String.fromEnvironment('ANILIST_CLIENT_ID'),
+    this.redirectUri = defaultAniListRedirectUri,
   }) : clock = clock ?? DateTime.now;
 
   final Box<dynamic> settings;
@@ -17,6 +19,7 @@ class AniListAccount {
   final Future<void> Function()? onSignIn;
   final DateTime Function() clock;
   final String clientId;
+  final String redirectUri;
   DateTime? _started;
   int _generation = 0;
 
@@ -41,14 +44,16 @@ class AniListAccount {
     return Uri.https('anilist.co', '/api/v2/oauth/authorize', {
       'client_id': clientId,
       'response_type': 'token',
+      'redirect_uri': redirectUri,
     });
   }
 
   Future<void> handleRedirect(Uri uri) async {
     final now = clock();
     final started = _started;
-    if (uri.scheme != 'kazumi' ||
-        uri.host != 'anilist-auth' ||
+    final redirect = Uri.parse(redirectUri);
+    if (uri.scheme != redirect.scheme ||
+        uri.host != redirect.host ||
         uri.hasPort ||
         uri.userInfo.isNotEmpty ||
         uri.path.isNotEmpty ||

@@ -77,6 +77,7 @@ void main() {
     expect(account.buildAuthorizeUrl().queryParameters, {
       'client_id': 'client',
       'response_type': 'token',
+      'redirect_uri': 'kazumi://anilist-auth',
     });
     await expectLater(
       account.handleRedirect(
@@ -99,6 +100,29 @@ void main() {
     now = now.add(const Duration(minutes: 11));
     await expectLater(account.handleRedirect(uri), throwsFormatException);
   });
+  test('configured redirect is used and rejects the default scheme', () async {
+    final custom = AniListAccount(
+      settings: settings,
+      tracker: account.tracker,
+      clock: () => now,
+      clientId: 'client',
+      redirectUri: 'hana://anilist-auth',
+    );
+    expect(
+      custom.buildAuthorizeUrl().queryParameters['redirect_uri'],
+      'hana://anilist-auth',
+    );
+    await expectLater(
+      custom.handleRedirect(
+        Uri.parse('kazumi://anilist-auth#access_token=secret&expires_in=60'),
+      ),
+      throwsFormatException,
+    );
+    await custom.handleRedirect(
+      Uri.parse('hana://anilist-auth#access_token=secret&expires_in=60'),
+    );
+  });
+
   test('OAuth disabled without client id', () {
     final noClient = AniListAccount(
       settings: settings,

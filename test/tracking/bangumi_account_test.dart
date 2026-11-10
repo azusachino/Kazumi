@@ -69,6 +69,34 @@ void main() {
     await dir.delete(recursive: true);
   });
 
+  test('configured redirect is used for authorization and exchange', () async {
+    final custom = BangumiAccount(
+      settings: settings,
+      tracker: BangumiTracker(adapter: adapter),
+      adapter: adapter,
+      clock: () => now,
+      clientId: 'id',
+      clientSecret: 'secret',
+      redirectUri: 'hana://bangumi-auth',
+    );
+    final url = custom.buildAuthorizeUrl();
+    expect(url.queryParameters['redirect_uri'], 'hana://bangumi-auth');
+    final state = url.queryParameters['state']!;
+    await expectLater(
+      custom.handleRedirect(
+        Uri.parse('kazumi://bangumi-auth?code=x&state=$state'),
+      ),
+      throwsFormatException,
+    );
+    await custom.handleRedirect(
+      Uri.parse('hana://bangumi-auth?code=x&state=$state'),
+    );
+    final exchange = adapter.requests.firstWhere(
+      (request) => request.uri.path == '/oauth/access_token',
+    );
+    expect((exchange.data as Map)['redirect_uri'], 'hana://bangumi-auth');
+  });
+
   test('pasted token validates before storage', () async {
     await account.signInWithToken(' token ');
     expect(await account.validToken(), 'token');
@@ -182,6 +210,33 @@ void main() {
     expect(link, isA<BangumiAuthDeepLink>());
     expect((link as BangumiAuthDeepLink).uri, uri);
   });
+  test('configured external OAuth links are routed and unrelated schemes ignored', () {
+    expect(
+      KazumiDeepLink.parse(
+        Uri.parse('hana://bangumi-auth'),
+        bangumiRedirectUri: 'hana://bangumi-auth',
+        anilistRedirectUri: 'hana://anilist-auth',
+      ),
+      isA<BangumiAuthDeepLink>(),
+    );
+    expect(
+      KazumiDeepLink.parse(
+        Uri.parse('hana://anilist-auth'),
+        bangumiRedirectUri: 'hana://bangumi-auth',
+        anilistRedirectUri: 'hana://anilist-auth',
+      ),
+      isA<AniListAuthDeepLink>(),
+    );
+    expect(
+      KazumiDeepLink.parse(
+        Uri.parse('hana://other'),
+        bangumiRedirectUri: 'hana://bangumi-auth',
+        anilistRedirectUri: 'hana://anilist-auth',
+      ),
+      isNull,
+    );
+  });
+
   test('OAuth unavailable without credentials', () {
     final other = BangumiAccount(
       settings: settings,

@@ -118,8 +118,15 @@ mode emits nothing.
 
 ### Providers
 
-Bangumi (through the existing `BangumiClient`, so the mirror/acceleration
-settings still apply):
+Tokens are sent only to the official hosts: `api.bgm.tv`, `bgm.tv` (OAuth)
+and `graphql.anilist.co`. Upstream Kazumi sends authenticated Bangumi calls
+to a hardcoded third-party mirror (`api.bgmapi.com`), and its default
+"mirror" acceleration rewrites `api.bgm.tv` to `api.kazumi.fyi` with the
+`Authorization` header intact. Tracker requests therefore never go through
+a mirror; ECH is allowed because it still reaches the official host. Public,
+unauthenticated browsing keeps its mirror settings.
+
+Bangumi:
 
 - `GET /v0/me`
 - `GET /v0/users/{username}/collections/{subject_id}` (404: no entry)
@@ -169,7 +176,7 @@ one at a time in this checkout.
 | 2 | Watched signal at 90% plus manual mark, wired to enqueue; tests | 1 | luna |
 | 3 | Bangumi tracker over `BangumiClient`: read, save, episode PUTs, status mapping, offset; tests with a fake transport | 1 | terra |
 | 4 | Bangumi accounts: OAuth flow, deep link, refresh, pasted token, migration from `bangumiAccessToken`; tests | 3 | terra |
-| 5 | Fold collection status into the outbox; remove `BangumiSyncService`, merge planner, priority setting and full-sync dialog; one-way import; tests | 3, 4 | luna |
+| 5 | Fold collection status into the outbox; remove `BangumiSyncService`, merge planner, priority setting and full-sync dialog; one-way import; move any remaining authenticated `BangumiApi` calls off `api.bgmapi.com`; tests | 3, 4 | luna |
 | 6 | AniList tracker, implicit-grant account, manual bind search; tests | 1 | terra |
 | 7 | UI: tracking sheet and Settings → Accounts | 4, 5, 6 | luna |
 

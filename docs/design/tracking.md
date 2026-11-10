@@ -223,6 +223,66 @@ Where the code differs from, or adds to, the design above:
   Bangumi; removal is local only.
 - Slice 5 ran on terra instead of luna because of its size.
 
+## Tracking UX v2 (Mihon-style), 2026-11-10
+
+The first sheet worked but read as a list of controls. The owner wants
+Mihon's experience: both trackers managed in one place, each in the same
+shape. Reference: `refs/media-tracking-apps/mihon` at `0c55527`,
+`app/src/main/java/eu/kanade/presentation/track/` (`TrackInfoDialogHome.kt`,
+`TrackerSearch.kt`, `TrackInfoDialogSelector.kt`).
+
+### Tracking sheet
+
+- One block per **signed-in** tracker, Bangumi first, same layout for both.
+  Signed-out trackers are not shown; with none signed in, the sheet shows a
+  short message and a button to 追踪账号.
+- **Not tracked:** tracker logo + a full-width "添加追踪" text button.
+  AniList opens the tracker search. Bangumi binds the current subject
+  directly (Kazumi items are Bangumi subjects), clearing any opt-out.
+- **Tracked:**
+  - Header row: logo (tap: open in browser; long-press: copy link), the bound
+    title (tap: search again, AniList only; long-press: copy title), a
+    vertical divider, and a `⋮` menu (open in browser, copy link, 集数偏移,
+    remove).
+  - Details box (rounded, `surfaceContainerHighest`): three equal cells
+    separated by dividers: status | progress `3 / 12` (or `3` when the total
+    is unknown) | score (placeholder "评分" when unset).
+  - A sync line under the box only when there is something to say:
+    "等待同步" or the failure message with "重试".
+- **Selectors** (dialogs, Mihon's `BaseSelector` shape: title, content,
+  取消 / 确定):
+  - status: radio list 想看 / 在看 / 看过 / 搁置 / 抛弃;
+  - progress: number picker from 0 to the known total (free number field when
+    the total is unknown);
+  - score: number picker 0–10, 0 meaning unscored.
+- Remove asks for confirmation and says the remote list is not changed; for
+  Bangumi it also says the show will not be tracked automatically again.
+
+### Tracker search (AniList)
+
+- Full-screen page: back button, a search field in the top bar with a clear
+  button, results below.
+- The query is prefilled with the **original title** (`BangumiItem.name`,
+  falling back to `nameCn`) regardless of the display setting: AniList does
+  not match Chinese titles, and Japanese titles match on both platforms.
+- Each result is a card: cover, title (native, then romaji), and small
+  details (format, year, episodes). Tapping selects it (highlighted border);
+  a bottom "追踪" button binds the selection. A result's menu offers open in
+  browser.
+
+### Prefer original title
+
+A switch in Settings → 界面: "显示原名", description "在番剧列表、详情页和播放器优先显示原名（通常为日文），而非中文名".
+It follows the owner's animeko setting (fork PR #2,
+`feat/original-title-display`). Off (default) keeps upstream behaviour.
+
+- One helper decides the display title: on → `name`, falling back to
+  `nameCn`; off → `nameCn`, falling back to `name`. Where a screen shows a
+  secondary title line, it shows the other name.
+- Applies to subject titles only (cards, info page header, collection and
+  history lists, search results, player and download titles, comments
+  sheet headers); character and staff names are unchanged.
+
 ## App registrations
 
 Kazumi has its own Bangumi app and AniList client, registered with

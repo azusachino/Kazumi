@@ -10,6 +10,8 @@ import 'package:kazumi/modules/collect/collect_module.dart';
 import 'package:kazumi/modules/download/download_module.dart';
 import 'package:kazumi/modules/history/history_module.dart';
 import 'package:kazumi/modules/search/search_history_module.dart';
+import 'package:kazumi/services/tracking/models.dart';
+import 'package:kazumi/services/tracking/tracker.dart';
 
 extension HiveRegistrar on HiveInterface {
   void registerAdapters() {
@@ -20,8 +22,12 @@ extension HiveRegistrar on HiveInterface {
     registerAdapter(DownloadEpisodeAdapter());
     registerAdapter(DownloadRecordAdapter());
     registerAdapter(HistoryAdapter());
+    registerAdapter(OutboxEntryAdapter());
     registerAdapter(ProgressAdapter());
     registerAdapter(SearchHistoryAdapter());
+    registerAdapter(TrackStatusAdapter());
+    registerAdapter(TrackerIdAdapter());
+    registerAdapter(TrackingBindingAdapter());
   }
 }
 
@@ -34,7 +40,11 @@ extension IsolatedHiveRegistrar on IsolatedHiveInterface {
     registerAdapter(DownloadEpisodeAdapter());
     registerAdapter(DownloadRecordAdapter());
     registerAdapter(HistoryAdapter());
+    registerAdapter(OutboxEntryAdapter());
     registerAdapter(ProgressAdapter());
     registerAdapter(SearchHistoryAdapter());
+    registerAdapter(TrackStatusAdapter());
+    registerAdapter(TrackerIdAdapter());
+    registerAdapter(TrackingBindingAdapter());
   }
 }

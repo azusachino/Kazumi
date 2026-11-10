@@ -11,6 +11,7 @@ sealed class KazumiDeepLink {
         if (id != null && id > 0 && '$id' == raw) return BangumiDeepLink(id);
       }
       if (uri.host == 'bangumi-auth') return BangumiAuthDeepLink(uri);
+      if (uri.host == 'anilist-auth') return AniListAuthDeepLink(uri);
       if (uri.host == 'search') {
         final query = uri.queryParameters['query']?.trim() ?? '';
         if (query.isNotEmpty) return SearchDeepLink(query);
@@ -24,6 +25,11 @@ sealed class KazumiDeepLink {
 
 final class BangumiAuthDeepLink extends KazumiDeepLink {
   const BangumiAuthDeepLink(this.uri);
+  final Uri uri;
+}
+
+final class AniListAuthDeepLink extends KazumiDeepLink {
+  const AniListAuthDeepLink(this.uri);
   final Uri uri;
 }
 

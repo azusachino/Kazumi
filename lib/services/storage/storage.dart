@@ -13,6 +13,9 @@ import 'package:kazumi/modules/search/search_history_module.dart';
 import 'package:kazumi/modules/download/download_module.dart';
 import 'package:kazumi/services/storage/history_storage_coordinator.dart';
 import 'package:kazumi/services/download/download_path_migration.dart';
+import 'package:kazumi/services/tracking/anilist_account.dart';
+import 'package:kazumi/services/tracking/anilist_binding.dart';
+import 'package:kazumi/services/tracking/anilist_tracker.dart';
 import 'package:kazumi/services/tracking/bangumi_account.dart';
 import 'package:kazumi/services/tracking/bangumi_binding.dart';
 import 'package:kazumi/services/tracking/bangumi_tracker.dart';
@@ -38,6 +41,8 @@ class GStorage {
   static late Box<OutboxEntry> trackingOutbox;
   static late TrackingSync trackingSync;
   static late BangumiAccount bangumiAccount;
+  static late AniListAccount anilistAccount;
+  static late AniListBindingManager anilistBindingManager;
   static late BangumiBindingManager bangumiBindingManager;
 
   /// Hive directory path, initialized during init()
@@ -185,6 +190,7 @@ class GStorage {
     trackingBindings = await _openBoxSafe<TrackingBinding>('trackingBindings');
     trackingOutbox = await _openBoxSafe<OutboxEntry>('trackingOutbox');
     final tracker = BangumiTracker();
+    final anilistTracker = AniListTracker();
     final bindings = HiveBindingStore(trackingBindings);
     bangumiAccount = BangumiAccount(
       settings: _setting,
@@ -192,14 +198,20 @@ class GStorage {
       onSignIn: () => trackingSync.retryFailed(TrackerId.bangumi),
     );
     await bangumiAccount.migrate();
+    anilistAccount = AniListAccount(
+      settings: _setting,
+      tracker: anilistTracker,
+      onSignIn: () => trackingSync.retryFailed(TrackerId.anilist),
+    );
     trackingSync = TrackingSync(
       bindings: bindings,
       outbox: HiveOutboxStore(trackingOutbox),
-      trackers: [tracker],
-      tokenProvider: (id) async => id == TrackerId.bangumi
-          ? bangumiAccount.validToken() : null,
+      trackers: [tracker, anilistTracker],
+      tokenProvider: (id) => id == TrackerId.bangumi
+          ? bangumiAccount.validToken() : anilistAccount.validToken(),
     );
     bangumiBindingManager = BangumiBindingManager(bangumiAccount, bindings, trackingSync);
+    anilistBindingManager = AniListBindingManager(anilistAccount, bindings, trackingSync);
     if (Platform.isIOS) {
       await rebaseIosDownloadPaths(downloads);
     }

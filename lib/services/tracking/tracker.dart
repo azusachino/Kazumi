@@ -25,9 +25,10 @@ enum TrackStatus {
 }
 
 class TrackerUser {
-  const TrackerUser({required this.id, required this.name});
+  const TrackerUser({required this.id, required this.name, this.scoreFormat});
   final String id;
   final String name;
+  final String? scoreFormat;
 }
 
 class TrackerSearchResult {
@@ -35,10 +36,18 @@ class TrackerSearchResult {
     required this.id,
     required this.title,
     this.cover,
+    this.episodes,
+    this.subtitle,
+    this.format,
+    this.seasonYear,
   });
   final String id;
   final String title;
   final String? cover;
+  final int? episodes;
+  final String? subtitle;
+  final String? format;
+  final int? seasonYear;
 }
 
 class RemoteEntry {

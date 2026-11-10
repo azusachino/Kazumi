@@ -45,8 +45,8 @@ class AppDeepLinks {
     _dialogs.cancel();
     unawaited(_open(link, session).catchError((Object error) {
       if (session.isStale) return;
-      if (link is BangumiAuthDeepLink) {
-        KazumiLogger().w('Deep link: Bangumi authorization failed');
+      if (link is BangumiAuthDeepLink || link is AniListAuthDeepLink) {
+        KazumiLogger().w('Deep link: authorization failed');
       } else {
         KazumiLogger().w('Deep link: failed to open', error: error);
       }
@@ -66,6 +66,8 @@ class AppDeepLinks {
     switch (link) {
       case BangumiAuthDeepLink(:final uri):
         await GStorage.bangumiAccount.handleRedirect(uri);
+      case AniListAuthDeepLink(:final uri):
+        await GStorage.anilistAccount.handleRedirect(uri);
       case BangumiDeepLink(:final id):
         await _dialogs.run((task) async {
           final item = await task.loading(

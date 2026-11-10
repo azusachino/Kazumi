@@ -70,10 +70,14 @@ class TrackingSync {
     int? progress,
     TrackStatus? status,
     int? score,
+    TrackerId? trackerId,
   }) async {
     await _exclusive(() async {
       for (final binding in await bindings.all()) {
-        if (binding.subjectId != subjectId) continue;
+        if (binding.subjectId != subjectId ||
+            (trackerId != null && binding.trackerId != trackerId)) {
+          continue;
+        }
         final old = await outbox.get(binding.key);
         final same =
             old?.bindingGeneration == binding.generation &&

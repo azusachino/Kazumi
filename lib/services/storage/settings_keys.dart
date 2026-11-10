@@ -526,6 +526,26 @@ class SettingsKeys {
     group: SettingGroup.misc,
   );
 
+  static const anilistAccountToken = SettingKey<String>(
+    _SettingBoxKey.anilistAccountToken,
+    '',
+    group: SettingGroup.bangumi,
+  );
+  static const anilistAccountExpiry = SettingKey<int>(
+    _SettingBoxKey.anilistAccountExpiry,
+    0,
+    group: SettingGroup.bangumi,
+  );
+  static const anilistAccountUsername = SettingKey<String>(
+    _SettingBoxKey.anilistAccountUsername,
+    '',
+    group: SettingGroup.bangumi,
+  );
+  static const anilistAccountScoreFormat = SettingKey<String>(
+    _SettingBoxKey.anilistAccountScoreFormat,
+    '',
+    group: SettingGroup.bangumi,
+  );
   static const bangumiAccessToken = SettingKey<String>(
     _SettingBoxKey.bangumiAccessToken,
     '',
@@ -695,6 +715,10 @@ class SettingsKeys {
     downloadDirectoryBookmark,
     shortcutDialogShown,
     onboardingCompleted,
+    anilistAccountToken,
+    anilistAccountExpiry,
+    anilistAccountUsername,
+    anilistAccountScoreFormat,
     bangumiAccessToken,
     bangumiAccountToken,
     bangumiAccountRefreshToken,
@@ -805,6 +829,10 @@ class _SettingBoxKey {
       downloadDanmaku = 'downloadDanmaku',
       downloadDirectory = 'downloadDirectory',
       shortcutDialogShown = 'shortcutDialogShown',
+      anilistAccountToken = 'anilistAccountToken',
+      anilistAccountExpiry = 'anilistAccountExpiry',
+      anilistAccountUsername = 'anilistAccountUsername',
+      anilistAccountScoreFormat = 'anilistAccountScoreFormat',
       bangumiAccessToken = 'bangumiAccessToken',
       bangumiAccountToken = 'bangumiAccountToken',
       bangumiAccountRefreshToken = 'bangumiAccountRefreshToken',

@@ -8,7 +8,6 @@ import 'package:kazumi/bean/appbar/sys_app_bar.dart';
 import 'package:kazumi/bean/dialog/dialog_helper.dart';
 import 'package:kazumi/bean/widget/state_presentation.dart';
 import 'package:kazumi/modules/bangumi/bangumi_item.dart';
-import 'package:kazumi/modules/bangumi/sync_priority.dart';
 import 'package:kazumi/modules/collect/collect_layout.dart';
 import 'package:kazumi/modules/collect/collect_sync_plan.dart';
 import 'package:kazumi/modules/collect/collect_type.dart';
@@ -42,13 +41,6 @@ class _CollectPageState extends State<CollectPage> with KazumiDialogOwner {
   }) =>
       switch (step) {
         CollectSyncStep.webDav => collectController.syncCollectibles(
-            onError: onError,
-          ),
-        CollectSyncStep.bangumi => collectController.syncCollectiblesBangumi(
-            onError: onError,
-            onProgress: onProgress,
-          ),
-        CollectSyncStep.upload => collectController.uploadCollectiblesToWebDav(
             onError: onError,
           ),
       };
@@ -86,21 +78,16 @@ class _CollectPageState extends State<CollectPage> with KazumiDialogOwner {
       webDavEnabled: GStorage.getSetting(SettingsKeys.webDavEnable),
       webDavCollectiblesEnabled:
           GStorage.getSetting(SettingsKeys.webDavEnableCollect),
-      bangumiEnabled: GStorage.getSetting(SettingsKeys.bangumiSyncEnable),
     );
     await dialogs.run((task) async {
       final destination = await task.show<CollectSyncDestination>(
         builder: (_) => CollectSyncDialog(
           plan: plan,
-          priority: BangumiSyncPriority.fromValue(
-            GStorage.getSetting(SettingsKeys.bangumiSyncPriority),
-          ),
           onSync: _syncStep,
         ),
       );
       task.withContext((context) => context.pushNamed(switch (destination) {
             CollectSyncDestination.webDavSettings => '/settings/webdav/',
-            CollectSyncDestination.bangumiSettings => '/settings/bangumi/',
           }));
     }, errorMessage: '同步未完成，请稍后重试');
   }

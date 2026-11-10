@@ -14,6 +14,7 @@ import 'package:kazumi/bean/dialog/dialog_helper.dart';
 import 'package:kazumi/bean/widget/collect_button.dart';
 import 'package:kazumi/bean/widget/embedded_native_control_area.dart';
 import 'package:kazumi/modules/bangumi/bangumi_item.dart';
+import 'package:kazumi/modules/bangumi/bangumi_title.dart';
 import 'package:kazumi/pages/info/info_actions_menu.dart';
 import 'package:kazumi/pages/info/info_controller.dart';
 import 'package:kazumi/pages/info/info_tabview.dart';
@@ -173,10 +174,8 @@ class _InfoPageState extends State<InfoPage>
   }
 
   Future<void> _openReviewEditor() async {
-    final token =
-        GStorage.getSetting(SettingsKeys.bangumiAccessToken).toString().trim();
-    if (token.isEmpty) {
-      KazumiDialog.showToast(message: '请先在同步设置中绑定 Bangumi');
+    if (!GStorage.bangumiAccount.isSignedIn) {
+      KazumiDialog.showToast(message: '请先在追踪账号中登录 Bangumi');
       return;
     }
     final localType = infoController.collectController
@@ -248,9 +247,7 @@ class _InfoPageState extends State<InfoPage>
 
   Future<void> onCommentsTabSelected() async {
     final interest = infoController.bangumiItem.interest;
-    final token =
-        GStorage.getSetting(SettingsKeys.bangumiAccessToken).toString().trim();
-    if (interest != null && token.isNotEmpty) {
+    if (interest != null && GStorage.bangumiAccount.isSignedIn) {
       final updated = await infoController.fillInterestUserProfileIfNeeded();
       if (!mounted) return;
       if (updated) {
@@ -346,9 +343,7 @@ class _InfoPageState extends State<InfoPage>
                       width: double.infinity,
                       alignment: Alignment.centerLeft,
                       child: Text(
-                        infoController.bangumiItem.nameCn == ''
-                            ? infoController.bangumiItem.name
-                            : infoController.bangumiItem.nameCn,
+                        infoController.bangumiItem.displayTitle,
                       ),
                     ),
                   ),

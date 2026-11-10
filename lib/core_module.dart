@@ -16,6 +16,8 @@ import 'package:kazumi/services/player/history_playback_service.dart';
 import 'package:kazumi/services/shaders/shader_asset_service.dart';
 import 'package:kazumi/services/sync/danmaku_shield_sync_service.dart';
 import 'package:kazumi/services/sync/webdav.dart';
+import 'package:kazumi/services/storage/storage.dart';
+import 'package:kazumi/services/tracking/tracking_sync.dart';
 
 /// Root-owned application data and cross-feature coordinators.
 ///
@@ -39,6 +41,7 @@ final coreModule = createModule(
       ..addSingleton<ShaderAssetService>(ShaderAssetService.new)
       ..addSingleton<WebDav>(WebDav.new)
       ..addSingleton<DanmakuShieldSyncService>(DanmakuShieldSyncService.new)
+      ..addSingleton<TrackingSync>(() => GStorage.trackingSync)
       // Cross-feature state and coordinators.
       ..addSingleton<PluginsController>(PluginsController.new)
       ..addSingleton<CollectController>(CollectController.new)

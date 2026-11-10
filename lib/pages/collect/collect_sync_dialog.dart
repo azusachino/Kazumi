@@ -2,15 +2,12 @@ import 'package:flutter/material.dart';
 
 import 'package:kazumi/bean/widget/loading_indicator.dart';
 import 'package:kazumi/bean/widget/state_presentation.dart';
-import 'package:kazumi/modules/bangumi/sync_priority.dart';
 import 'package:kazumi/modules/collect/collect_sync_plan.dart';
 
-enum CollectSyncDestination { webDavSettings, bangumiSettings }
+enum CollectSyncDestination { webDavSettings }
 
 enum CollectSyncStep {
-  webDav('WebDAV 收藏', '合并本地与云端收藏', Icons.cloud_sync_rounded),
-  bangumi('Bangumi 状态', '同步追番状态', Icons.bookmarks_rounded),
-  upload('回传 WebDAV', '上传合并后的收藏', Icons.cloud_upload_rounded);
+  webDav('WebDAV 收藏', '合并本地与云端收藏', Icons.cloud_sync_rounded);
 
   const CollectSyncStep(this._title, this._description, this._icon);
 
@@ -19,8 +16,7 @@ enum CollectSyncStep {
   final IconData _icon;
 
   CollectSyncDestination get _settings => switch (this) {
-        bangumi => CollectSyncDestination.bangumiSettings,
-        webDav || upload => CollectSyncDestination.webDavSettings,
+        webDav => CollectSyncDestination.webDavSettings,
       };
 }
 
@@ -47,12 +43,10 @@ class CollectSyncDialog extends StatefulWidget {
   const CollectSyncDialog({
     super.key,
     required this.plan,
-    required this.priority,
     required this.onSync,
   });
 
   final CollectSyncPlan plan;
-  final BangumiSyncPriority priority;
   final CollectSyncOperation onSync;
 
   @override
@@ -69,10 +63,6 @@ class _CollectSyncDialogState extends State<CollectSyncDialog> {
   List<_StepState> _createSteps() => [
         if (widget.plan.shouldSyncWebDavCollectibles)
           _StepState(CollectSyncStep.webDav),
-        if (widget.plan.shouldSyncBangumi) _StepState(CollectSyncStep.bangumi),
-        if (widget.plan.shouldSyncWebDavCollectibles &&
-            widget.plan.shouldSyncBangumi)
-          _StepState(CollectSyncStep.upload),
       ];
 
   // Removed routes can stay mounted until their exit animation ends.
@@ -90,21 +80,6 @@ class _CollectSyncDialogState extends State<CollectSyncDialog> {
     });
     for (final state in _steps) {
       if (!_active) return;
-      if (state.step == CollectSyncStep.upload &&
-          !widget.plan.shouldUploadWebDavAfterBangumi(
-            webDavSynced: _steps.any((s) =>
-                s.step == CollectSyncStep.webDav &&
-                s.status == _StepStatus.succeeded),
-            bangumiSynced: _steps.any((s) =>
-                s.step == CollectSyncStep.bangumi &&
-                s.status == _StepStatus.succeeded),
-          )) {
-        setState(() {
-          state.status = _StepStatus.skipped;
-          state.message = '前两步未全部完成';
-        });
-        continue;
-      }
       setState(() {
         state.status = _StepStatus.running;
         state.message = '正在连接…';
@@ -232,21 +207,10 @@ class _CollectSyncDialogState extends State<CollectSyncDialog> {
               ],
               if (!widget.plan.canSync) ...[
                 _setupRow(CollectSyncDestination.webDavSettings),
-                const SizedBox(height: 4),
-                _setupRow(CollectSyncDestination.bangumiSettings),
               ] else ...[
                 for (var i = 0; i < _steps.length; i++) ...[
                   if (i > 0) const SizedBox(height: 4),
                   _stepRow(_steps[i], i),
-                ],
-                if (_phase == _SyncPhase.ready &&
-                    widget.plan.shouldSyncBangumi) ...[
-                  const SizedBox(height: 16),
-                  Text(
-                    '冲突处理：${widget.priority.label}',
-                    style: theme.textTheme.bodySmall
-                        ?.copyWith(color: colors.onSurfaceVariant),
-                  ),
                 ],
               ],
             ],
@@ -294,11 +258,6 @@ class _CollectSyncDialogState extends State<CollectSyncDialog> {
           'WebDAV',
           '设置服务器，开启收藏同步',
           Icons.cloud_sync_rounded
-        ),
-      CollectSyncDestination.bangumiSettings => (
-          'Bangumi',
-          '连接账号，开启状态同步',
-          Icons.bookmarks_rounded
         ),
     };
     return Material(

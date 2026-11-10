@@ -261,6 +261,11 @@ class SettingsKeys {
     null,
     group: SettingGroup.interface,
   );
+  static const preferOriginalTitle = SettingKey<bool>(
+    _SettingBoxKey.preferOriginalTitle,
+    false,
+    group: SettingGroup.interface,
+  );
   static const enableGitProxy = SettingKey<bool>(
     _SettingBoxKey.enableGitProxy,
     true,
@@ -525,9 +530,25 @@ class SettingsKeys {
     false,
     group: SettingGroup.misc,
   );
-  static const bangumiSyncEnable = SettingKey<bool>(
-    _SettingBoxKey.bangumiSyncEnable,
-    false,
+
+  static const anilistAccountToken = SettingKey<String>(
+    _SettingBoxKey.anilistAccountToken,
+    '',
+    group: SettingGroup.bangumi,
+  );
+  static const anilistAccountExpiry = SettingKey<int>(
+    _SettingBoxKey.anilistAccountExpiry,
+    0,
+    group: SettingGroup.bangumi,
+  );
+  static const anilistAccountUsername = SettingKey<String>(
+    _SettingBoxKey.anilistAccountUsername,
+    '',
+    group: SettingGroup.bangumi,
+  );
+  static const anilistAccountScoreFormat = SettingKey<String>(
+    _SettingBoxKey.anilistAccountScoreFormat,
+    '',
     group: SettingGroup.bangumi,
   );
   static const bangumiAccessToken = SettingKey<String>(
@@ -535,16 +556,38 @@ class SettingsKeys {
     '',
     group: SettingGroup.bangumi,
   );
-  static const bangumiSyncPriority = SettingKey<int>(
-    _SettingBoxKey.bangumiSyncPriority,
+  static const bangumiAccountToken = SettingKey<String>(
+    _SettingBoxKey.bangumiAccountToken,
+    '',
+    group: SettingGroup.bangumi,
+  );
+  static const bangumiAccountRefreshToken = SettingKey<String>(
+    _SettingBoxKey.bangumiAccountRefreshToken,
+    '',
+    group: SettingGroup.bangumi,
+  );
+  static const bangumiAccountExpiry = SettingKey<int>(
+    _SettingBoxKey.bangumiAccountExpiry,
     0,
     group: SettingGroup.bangumi,
   );
-  static const bangumiImmediateSyncToastEnable = SettingKey<bool>(
-    _SettingBoxKey.bangumiImmediateSyncToastEnable,
-    true,
+  static const bangumiAccountUsername = SettingKey<String>(
+    _SettingBoxKey.bangumiAccountUsername,
+    '',
     group: SettingGroup.bangumi,
   );
+  static const bangumiAccountKind = SettingKey<String>(
+    _SettingBoxKey.bangumiAccountKind,
+    '',
+    group: SettingGroup.bangumi,
+  );
+  static const bangumiExcludedSubjectIds = SettingKey<List<String>>(
+    'bangumiExcludedSubjectIds',
+    <String>[],
+    group: SettingGroup.bangumi,
+  );
+
+
   static const brightnessVolumeGesture = SettingKey<bool>(
     _SettingBoxKey.brightnessVolumeGesture,
     true,
@@ -669,6 +712,7 @@ class SettingsKeys {
     proxyUrl,
     proxyTestUrl,
     showRating,
+    preferOriginalTitle,
     defaultCollectLayout,
     downloadParallelEpisodes,
     downloadParallelSegments,
@@ -677,10 +721,17 @@ class SettingsKeys {
     downloadDirectoryBookmark,
     shortcutDialogShown,
     onboardingCompleted,
-    bangumiSyncEnable,
+    anilistAccountToken,
+    anilistAccountExpiry,
+    anilistAccountUsername,
+    anilistAccountScoreFormat,
     bangumiAccessToken,
-    bangumiSyncPriority,
-    bangumiImmediateSyncToastEnable,
+    bangumiAccountToken,
+    bangumiAccountRefreshToken,
+    bangumiAccountExpiry,
+    bangumiAccountUsername,
+    bangumiAccountKind,
+    bangumiExcludedSubjectIds,
     brightnessVolumeGesture,
     historySyncDeviceId,
     historySyncSequence,
@@ -745,6 +796,7 @@ class _SettingBoxKey {
       showPlayerError = 'showPlayerError',
       oledEnhance = 'oledEnhance',
       displayMode = 'displayMode',
+      preferOriginalTitle = 'preferOriginalTitle',
       enableGitProxy = 'enableGitProxy',
       enableBangumiProxy = 'enableBangumiProxy',
       enableSystemProxy = 'enableSystemProxy',
@@ -784,10 +836,16 @@ class _SettingBoxKey {
       downloadDanmaku = 'downloadDanmaku',
       downloadDirectory = 'downloadDirectory',
       shortcutDialogShown = 'shortcutDialogShown',
-      bangumiSyncEnable = 'bangumiSyncEnable',
+      anilistAccountToken = 'anilistAccountToken',
+      anilistAccountExpiry = 'anilistAccountExpiry',
+      anilistAccountUsername = 'anilistAccountUsername',
+      anilistAccountScoreFormat = 'anilistAccountScoreFormat',
       bangumiAccessToken = 'bangumiAccessToken',
-      bangumiSyncPriority = 'bangumiSyncPriority',
-      bangumiImmediateSyncToastEnable = 'bangumiImmediateSyncToastEnable',
+      bangumiAccountToken = 'bangumiAccountToken',
+      bangumiAccountRefreshToken = 'bangumiAccountRefreshToken',
+      bangumiAccountExpiry = 'bangumiAccountExpiry',
+      bangumiAccountUsername = 'bangumiAccountUsername',
+      bangumiAccountKind = 'bangumiAccountKind',
       brightnessVolumeGesture = 'brightnessVolumeGesture',
       historySyncDeviceId = 'historySyncDeviceId',
       historySyncSequence = 'historySyncSequence',

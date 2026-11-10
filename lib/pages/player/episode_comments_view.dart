@@ -6,6 +6,8 @@ import 'package:kazumi/bean/widget/error_widget.dart';
 import 'package:kazumi/bean/widget/empty_state_widget.dart';
 import 'package:kazumi/bean/widget/loading_indicator.dart';
 import 'package:kazumi/modules/bangumi/episode_item.dart';
+import 'package:kazumi/modules/bangumi/bangumi_title.dart';
+import 'package:kazumi/services/storage/storage.dart';
 import 'package:kazumi/modules/comments/comment_item.dart';
 
 class EpisodeCommentsView extends StatelessWidget {
@@ -239,16 +241,17 @@ class _EpisodeHeader extends StatelessWidget {
     final colors = Theme.of(context).colorScheme;
     final type = Theme.of(context).textTheme;
     final number = info?.episode ?? episode;
-    final translatedTitle = info?.nameCn ?? '';
-    final originalTitle = info?.name ?? '';
-    final title = translatedTitle.isNotEmpty
-        ? translatedTitle
-        : originalTitle.isNotEmpty
-            ? originalTitle
-            : '第 $number 集';
-    final subtitle = originalTitle.isNotEmpty && originalTitle != title
-        ? originalTitle
-        : '';
+    final preferOriginal =
+        GStorage.getSetting(SettingsKeys.preferOriginalTitle);
+    final preferredTitle = info == null
+        ? ''
+        : bangumiTitle(info!.name, info!.nameCn,
+            preferOriginal: preferOriginal);
+    final title = preferredTitle.isEmpty ? '第 $number 集' : preferredTitle;
+    final subtitle = info == null
+        ? ''
+        : bangumiSecondaryTitle(info!.name, info!.nameCn,
+            preferOriginal: preferOriginal);
     final episodeType = info?.readType().toUpperCase() ?? 'EP';
 
     return Material(

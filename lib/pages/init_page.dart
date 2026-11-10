@@ -3,7 +3,6 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:kazumi/bean/dialog/dialog_helper.dart';
 import 'package:kazumi/pages/my/my_controller.dart';
-import 'package:kazumi/services/sync/bangumi_sync_service.dart';
 import 'package:kazumi/services/sync/danmaku_shield_sync_service.dart';
 import 'package:kazumi/services/sync/webdav.dart';
 import 'package:kazumi/services/storage/storage.dart';
@@ -62,7 +61,6 @@ class _InitPageState extends State<InitPage> {
     _loadShaders();
     unawaited(myController.loadShieldList());
     _webDavInit();
-    _bangumiInit();
     try {
       await downloadController.init();
       _setupBackgroundDownloadNavigation();
@@ -177,26 +175,6 @@ class _InitPageState extends State<InitPage> {
           'WebDav: automatic initialization failed',
           error: e,
           stackTrace: stackTrace,
-        );
-      }
-    }
-  }
-
-  Future<void> _bangumiInit() async {
-    final bangumiEnable = GStorage.getSetting(SettingsKeys.bangumiSyncEnable);
-    if (bangumiEnable) {
-      final bangumi = BangumiSyncService();
-      KazumiLogger().i('Bangumi: Starting Bangumi initialization');
-      try {
-        await bangumi.ping();
-      } catch (e) {
-        KazumiLogger().w(
-          'Bangumi: initialization failed; keeping sync enabled for retry',
-          error: e,
-        );
-        KazumiDialog.showToast(
-          message:
-              'Bangumi 暂未连接，同步设置已保留：${BangumiSyncService.describeError(e)}',
         );
       }
     }

@@ -1,0 +1,4 @@
+[tools]
+flutter = "3.47.9"
+cmake = "4.4"
+ninja = "1.13"

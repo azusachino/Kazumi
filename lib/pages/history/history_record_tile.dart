@@ -4,6 +4,7 @@ import 'package:kazumi/bean/widget/kazumi_menu.dart';
 import 'package:kazumi/bean/widget/loading_indicator.dart';
 import 'package:kazumi/modules/collect/collect_type.dart';
 import 'package:kazumi/modules/history/history_module.dart';
+import 'package:kazumi/modules/bangumi/bangumi_title.dart';
 
 class HistoryRecordTile extends StatelessWidget {
   const HistoryRecordTile({
@@ -44,9 +45,7 @@ class HistoryRecordTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
-    final title = history.bangumiItem.nameCn.isEmpty
-        ? history.bangumiItem.name
-        : history.bangumiItem.nameCn;
+    final title = history.bangumiItem.displayTitle;
     final episode = history.lastWatchEpisodeName.isEmpty
         ? '第 ${history.lastWatchEpisode} 话'
         : history.lastWatchEpisodeName;

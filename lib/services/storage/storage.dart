@@ -13,6 +13,16 @@ import 'package:kazumi/modules/search/search_history_module.dart';
 import 'package:kazumi/modules/download/download_module.dart';
 import 'package:kazumi/services/storage/history_storage_coordinator.dart';
 import 'package:kazumi/services/download/download_path_migration.dart';
+import 'package:kazumi/services/tracking/anilist_account.dart';
+import 'package:kazumi/services/tracking/anilist_binding.dart';
+import 'package:kazumi/services/tracking/anilist_tracker.dart';
+import 'package:kazumi/services/tracking/bangumi_account.dart';
+import 'package:kazumi/services/tracking/bangumi_binding.dart';
+import 'package:kazumi/services/tracking/bangumi_tracker.dart';
+import 'package:kazumi/services/tracking/tracker.dart';
+import 'package:kazumi/services/tracking/models.dart';
+import 'package:kazumi/services/tracking/stores.dart';
+import 'package:kazumi/services/tracking/tracking_sync.dart';
 
 import 'package:kazumi/services/storage/settings_keys.dart';
 export 'package:kazumi/services/storage/settings_keys.dart';
@@ -27,6 +37,13 @@ class GStorage {
   static late final Box<dynamic> _setting;
   static late Box<SearchHistory> searchHistory;
   static late Box<DownloadRecord> downloads;
+  static late Box<TrackingBinding> trackingBindings;
+  static late Box<OutboxEntry> trackingOutbox;
+  static late TrackingSync trackingSync;
+  static late BangumiAccount bangumiAccount;
+  static late AniListAccount anilistAccount;
+  static late AniListBindingManager anilistBindingManager;
+  static late BangumiBindingManager bangumiBindingManager;
 
   /// Hive directory path, initialized during init()
   static String? _hivePath;
@@ -136,6 +153,17 @@ class GStorage {
     });
   }
 
+  /// Insert only if no other local write has already added this subject.
+  static Future<bool> putCollectibleIfAbsent(CollectedBangumi collectible) {
+    return _runCollectChangesWriteExclusive(() async {
+      final id = collectible.bangumiItem.id;
+      if (collectibles.containsKey(id)) return false;
+      await collectibles.put(id, collectible);
+      await collectibles.flush();
+      return true;
+    });
+  }
+
   /// Delete a collectible using the shared collect write queue.
   static Future<void> deleteCollectible(int bangumiId) {
     return _runCollectChangesWriteExclusive(() async {
@@ -159,6 +187,31 @@ class GStorage {
     shieldList = await _openBoxSafe<String>('shieldList');
     searchHistory = await _openBoxSafe<SearchHistory>('searchHistory');
     downloads = await _openBoxSafe<DownloadRecord>('downloads');
+    trackingBindings = await _openBoxSafe<TrackingBinding>('trackingBindings');
+    trackingOutbox = await _openBoxSafe<OutboxEntry>('trackingOutbox');
+    final tracker = BangumiTracker();
+    final anilistTracker = AniListTracker();
+    final bindings = HiveBindingStore(trackingBindings);
+    bangumiAccount = BangumiAccount(
+      settings: _setting,
+      tracker: tracker,
+      onSignIn: () => trackingSync.retryFailed(TrackerId.bangumi),
+    );
+    await bangumiAccount.discardPastedTokens();
+    anilistAccount = AniListAccount(
+      settings: _setting,
+      tracker: anilistTracker,
+      onSignIn: () => trackingSync.retryFailed(TrackerId.anilist),
+    );
+    trackingSync = TrackingSync(
+      bindings: bindings,
+      outbox: HiveOutboxStore(trackingOutbox),
+      trackers: [tracker, anilistTracker],
+      tokenProvider: (id) => id == TrackerId.bangumi
+          ? bangumiAccount.validToken() : anilistAccount.validToken(),
+    );
+    bangumiBindingManager = BangumiBindingManager(bangumiAccount, bindings, trackingSync);
+    anilistBindingManager = AniListBindingManager(anilistAccount, bindings, trackingSync);
     if (Platform.isIOS) {
       await rebaseIosDownloadPaths(downloads);
     }

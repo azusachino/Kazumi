@@ -146,7 +146,7 @@ class _SearchResultCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final title = item.nameCn.isNotEmpty ? item.nameCn : item.name;
+    final title = item.displayTitle;
     final year = item.airDate.length >= 4 ? item.airDate.substring(0, 4) : '';
     return Material(
       type: MaterialType.transparency,

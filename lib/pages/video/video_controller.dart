@@ -6,6 +6,7 @@ import 'package:kazumi/plugins/plugins.dart';
 import 'package:kazumi/pages/history/history_controller.dart';
 import 'package:kazumi/pages/player/player_controller.dart';
 import 'package:kazumi/modules/bangumi/bangumi_item.dart';
+import 'package:kazumi/modules/bangumi/bangumi_title.dart';
 import 'package:kazumi/modules/download/download_module.dart';
 import 'package:kazumi/modules/history/history_module.dart';
 import 'package:kazumi/repositories/download_repository.dart';
@@ -185,8 +186,7 @@ abstract class _VideoPageController with Store implements Disposable {
   }) {
     this.bangumiItem = bangumiItem;
     _offlinePluginName = pluginName;
-    title =
-        bangumiItem.nameCn.isNotEmpty ? bangumiItem.nameCn : bangumiItem.name;
+    title = bangumiItem.displayTitle;
     isOfflineMode = true;
     _loading = false;
 
@@ -525,8 +525,7 @@ abstract class _VideoPageController with Store implements Disposable {
       referer: '',
       currentRoad: resolvedEpisode.roadIndex,
       coverUrl: bangumiItem.images['large'],
-      bangumiName:
-          bangumiItem.nameCn.isNotEmpty ? bangumiItem.nameCn : bangumiItem.name,
+      bangumiName: bangumiItem.displayTitle,
     );
 
     final initialized = await playerController.init(params);
@@ -642,9 +641,7 @@ abstract class _VideoPageController with Store implements Disposable {
         referer: currentPlugin.referer,
         currentRoad: resolvedEpisode.roadIndex,
         coverUrl: bangumiItem.images['large'],
-        bangumiName: bangumiItem.nameCn.isNotEmpty
-            ? bangumiItem.nameCn
-            : bangumiItem.name,
+        bangumiName: bangumiItem.displayTitle,
       );
 
       final initialized = await playerController.init(params);

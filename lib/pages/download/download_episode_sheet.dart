@@ -7,6 +7,7 @@ import 'package:scrollview_observer/scrollview_observer.dart';
 import 'package:kazumi/bean/dialog/dialog_helper.dart';
 import 'package:kazumi/bean/dialog/material_bottom_sheet.dart';
 import 'package:kazumi/modules/download/download_module.dart';
+import 'package:kazumi/modules/bangumi/bangumi_title.dart';
 import 'package:kazumi/modules/roads/road_module.dart';
 import 'package:kazumi/pages/download/download_controller.dart';
 import 'package:kazumi/pages/video/video_controller.dart';
@@ -217,9 +218,7 @@ class _DownloadEpisodeSheetState extends State<DownloadEpisodeSheet> {
 
       downloadController.startDownload(
         bangumiId: bangumiItem.id,
-        bangumiName: bangumiItem.nameCn.isNotEmpty
-            ? bangumiItem.nameCn
-            : bangumiItem.name,
+        bangumiName: bangumiItem.displayTitle,
         bangumiCover: bangumiItem.images['large'] ?? '',
         pluginName: plugin.name,
         episodeNumber: episodeNumber,

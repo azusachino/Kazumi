@@ -48,7 +48,6 @@ class ApiEndpoints {
   static const String bangumiAPIDomain = 'https://api.bgm.tv';
 
   /// Bangumi 鉴权 API
-  static const String bangumiAuthAPIMirrorDomain = 'https://api.bgmapi.com';
 
   /// Telegram 群组
   static const String telegramGroup = 'https://t.me/kazumi_app';

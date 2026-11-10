@@ -7,6 +7,7 @@ import 'package:kazumi/bean/dialog/dialog_helper.dart';
 import 'package:kazumi/navigation.dart';
 import 'package:kazumi/request/apis/bangumi_api.dart';
 import 'package:kazumi/services/logging/logger.dart';
+import 'package:kazumi/services/storage/storage.dart';
 import 'package:kazumi/utils/async_session.dart';
 import 'package:kazumi/utils/device.dart';
 import 'package:window_manager/window_manager.dart';
@@ -44,8 +45,13 @@ class AppDeepLinks {
     _dialogs.cancel();
     unawaited(_open(link, session).catchError((Object error) {
       if (session.isStale) return;
-      KazumiLogger().w('Deep link: failed to open', error: error);
-      KazumiDialog.showToast(message: '无法打开链接');
+      if (link is BangumiAuthDeepLink || link is AniListAuthDeepLink) {
+        KazumiLogger().w('Deep link: authorization failed');
+        KazumiDialog.showToast(message: '授权失败，请重试');
+      } else {
+        KazumiLogger().w('Deep link: failed to open', error: error);
+        KazumiDialog.showToast(message: '无法打开链接');
+      }
     }));
   }
 
@@ -59,6 +65,12 @@ class AppDeepLinks {
       await windowManager.focus();
     }
     switch (link) {
+      case BangumiAuthDeepLink(:final uri):
+        await GStorage.bangumiAccount.handleRedirect(uri);
+        if (!session.isStale) KazumiDialog.showToast(message: 'Bangumi 授权成功');
+      case AniListAuthDeepLink(:final uri):
+        await GStorage.anilistAccount.handleRedirect(uri);
+        if (!session.isStale) KazumiDialog.showToast(message: 'AniList 授权成功');
       case BangumiDeepLink(:final id):
         await _dialogs.run((task) async {
           final item = await task.loading(

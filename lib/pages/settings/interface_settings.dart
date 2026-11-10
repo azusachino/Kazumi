@@ -16,6 +16,7 @@ class InterfaceSettingsPage extends StatefulWidget {
 
 class _InterfaceSettingsPageState extends State<InterfaceSettingsPage> {
   late bool showRating;
+  late bool preferOriginalTitle;
   late String defaultPage;
   late CollectLayout _defaultCollectLayout;
   bool _savingCollectLayout = false;
@@ -34,6 +35,8 @@ class _InterfaceSettingsPageState extends State<InterfaceSettingsPage> {
   void initState() {
     super.initState();
     showRating = GStorage.getSetting(SettingsKeys.showRating);
+    preferOriginalTitle =
+        GStorage.getSetting(SettingsKeys.preferOriginalTitle);
     defaultPage = GStorage.getSetting(SettingsKeys.defaultStartupPage);
     _defaultCollectLayout = CollectLayout.fromValue(
       GStorage.getSetting(SettingsKeys.defaultCollectLayout),
@@ -88,6 +91,18 @@ class _InterfaceSettingsPageState extends State<InterfaceSettingsPage> {
                 for (final layout in CollectLayout.values) layout: layout.label,
               },
               onChanged: _updateDefaultCollectLayout,
+            ),
+            SettingsTile.switchTile(
+              leading: Icons.translate_rounded,
+              onToggle: (value) async {
+                preferOriginalTitle = value ?? !preferOriginalTitle;
+                await GStorage.putSetting(
+                    SettingsKeys.preferOriginalTitle, preferOriginalTitle);
+                setState(() {});
+              },
+              title: Text('显示原名'),
+              description: Text('在番剧列表、详情页和播放器优先显示原名（通常为日文），而非中文名'),
+              initialValue: preferOriginalTitle,
             ),
             SettingsTile.switchTile(
               leading: Icons.star_rounded,

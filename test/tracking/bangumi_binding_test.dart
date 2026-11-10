@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive_ce/hive.dart';
 import 'package:kazumi/modules/bangumi/bangumi_item.dart';
+import 'package:kazumi/modules/collect/collect_type.dart';
 import 'package:kazumi/services/tracking/bangumi_account.dart';
 import 'package:kazumi/services/tracking/bangumi_binding.dart';
 import 'package:kazumi/services/tracking/tracker.dart';
@@ -54,6 +55,19 @@ void main() {
     expect(outbox.rows['123:bangumi']!.progress, 2);
     await manager.watched(item, 3);
     expect(bindings.rows['123:bangumi']!.generation, binding.generation);
+    for (final entry in {
+      CollectType.watching: TrackStatus.current,
+      CollectType.planToWatch: TrackStatus.planning,
+      CollectType.onHold: TrackStatus.paused,
+      CollectType.watched: TrackStatus.completed,
+      CollectType.abandoned: TrackStatus.dropped,
+    }.entries) {
+      await manager.statusChanged(item, entry.key);
+      expect(outbox.rows['123:bangumi']!.status, entry.value);
+    }
+    final revision = outbox.rows['123:bangumi']!.revision;
+    await manager.statusChanged(item, CollectType.none);
+    expect(outbox.rows['123:bangumi']!.revision, revision);
     sync.dispose();
     await Hive.close();
     await dir.delete(recursive: true);

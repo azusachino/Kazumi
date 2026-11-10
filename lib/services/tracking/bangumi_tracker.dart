@@ -1,4 +1,6 @@
 import 'package:dio/dio.dart';
+import 'package:kazumi/modules/bangumi/bangumi_collection.dart';
+import 'package:kazumi/modules/comments/comment_item.dart';
 import 'package:kazumi/utils/constants.dart' show bangumiHTTPHeader;
 
 import 'tracker.dart';
@@ -66,6 +68,33 @@ class BangumiTracker implements Tracker {
       }
       throw const TrackerNetworkException();
     }
+  }
+
+  Future<User> currentUser(String token) async {
+    final response = await _request(token, 'GET', '/v0/me');
+    return User.fromJson(Map<String, dynamic>.from(response.data as Map));
+  }
+
+  Future<void> updateCollection(String token, int id, Map<String, dynamic> data) async {
+    await _request(token, 'POST', _subjectPath('$id'), data: data);
+  }
+
+  Future<List<BangumiCollection>> collections(String token, String username) async {
+    final result = <BangumiCollection>[];
+    var offset = 0;
+    while (true) {
+      final response = await _request(token, 'GET',
+          '/v0/users/${Uri.encodeComponent(username)}/collections',
+          query: {'subject_type': 2, 'limit': _pageSize, 'offset': offset});
+      final data = response.data as Map<String, dynamic>;
+      final page = data['data'] as List<dynamic>;
+      result.addAll(page.map((row) => BangumiCollection.fromJson(row as Map)));
+      offset += page.length;
+      final total = (data['total'] as num).toInt();
+      if (offset >= total) break;
+      if (page.isEmpty) throw const FormatException('Incomplete Bangumi collections');
+    }
+    return result;
   }
 
   @override

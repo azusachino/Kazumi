@@ -45,6 +45,39 @@ Map<String, dynamic> episode(
 };
 
 void main() {
+  test('imports paginated anime collections from the official host', () async {
+    final adapter = FakeAdapter((request) {
+      final offset = request.queryParameters['offset'] as int;
+      return (status: 200, headers: null, body: {
+        'total': 2,
+        'data': [{
+          'subject_id': offset + 1,
+          'type': 3,
+          'updated_at': '2026-01-01T00:00:00Z',
+          'subject': {'id': offset + 1},
+        }],
+      });
+    });
+    final tracker = BangumiTracker(adapter: adapter);
+    final entries = await tracker.collections('secret', 'alice');
+    expect(entries.map((entry) => entry.bangumiId), [1, 2]);
+    for (final request in adapter.requests) {
+      expect(request.uri.host, 'api.bgm.tv');
+      expect(request.headers['Authorization'], 'Bearer secret');
+      expect(request.queryParameters['subject_type'], 2);
+    }
+  });
+
+  test('rating uses the official host and bearer token', () async {
+    final adapter = FakeAdapter((_) => (status: 200, body: {}, headers: null));
+    final tracker = BangumiTracker(adapter: adapter);
+    await tracker.updateCollection('secret', 123, {'type': 3, 'rate': 8});
+    final request = adapter.requests.single;
+    expect(request.uri.toString(), 'https://api.bgm.tv/v0/users/-/collections/123');
+    expect(request.headers['Authorization'], 'Bearer secret');
+    expect(request.data, {'type': 3, 'rate': 8});
+  });
+
   const statuses = {
     1: TrackStatus.planning,
     2: TrackStatus.completed,

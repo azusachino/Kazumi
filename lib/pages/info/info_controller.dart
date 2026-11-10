@@ -6,6 +6,10 @@ import 'package:kazumi/modules/bangumi/bangumi_review.dart';
 import 'package:kazumi/pages/collect/collect_controller.dart';
 import 'package:kazumi/modules/search/plugin_search_module.dart';
 import 'package:kazumi/request/apis/bangumi_api.dart';
+import 'package:kazumi/services/storage/storage.dart';
+import 'package:kazumi/services/tracking/bangumi_tracker.dart';
+import 'package:kazumi/modules/collect/collect_type.dart';
+import 'package:kazumi/modules/collect/collect_type_mapper.dart';
 import 'package:mobx/mobx.dart';
 import 'package:kazumi/services/logging/logger.dart';
 import 'package:kazumi/modules/comments/comment_item.dart';
@@ -73,10 +77,12 @@ abstract class _InfoController with Store {
     }
     _isFillingInterestUserProfile = true;
     try {
-      final user = await BangumiApi.getCurrentUser();
-      if (user == null) {
+      final token = await GStorage.bangumiAccount.validToken();
+      if (token == null) {
         return false;
       }
+      final tracker = GStorage.bangumiAccount.tracker as BangumiTracker;
+      final user = await tracker.currentUser(token);
       bangumiItem.interest = interest.copyWithUser(user: user);
       await collectController.updateLocalCollect(bangumiItem);
       return true;
@@ -270,14 +276,16 @@ abstract class _InfoController with Store {
 
   Future<bool> rateBangumi(BangumiReview review,
       {required int localType}) async {
-    final updated = await BangumiApi.addOrUpdateBangumiEvaluationBySubjectID(
-      bangumiItem.id,
-      localType,
-      comment: review.comment,
-      rate: review.score,
-      tags: review.tags,
-    );
-    if (!updated) return false;
+    final token = await GStorage.bangumiAccount.validToken();
+    final type = CollectType.fromValue(localType).toBangumiCollectionType();
+    if (token == null || type == null) return false;
+    final tracker = GStorage.bangumiAccount.tracker as BangumiTracker;
+    await tracker.updateCollection(token, bangumiItem.id, {
+      'type': type.value,
+      'comment': review.comment,
+      'rate': review.score,
+      'tags': review.tags,
+    });
 
     bangumiItem.interest = BangumiInterest.mergeLocalSubmission(
       previous: bangumiItem.interest,

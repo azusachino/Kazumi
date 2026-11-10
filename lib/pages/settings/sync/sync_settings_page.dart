@@ -5,12 +5,10 @@ import 'package:kazumi/bean/settings/settings_detail_scaffold.dart';
 import 'package:kazumi/bean/widget/state_presentation.dart';
 import 'package:kazumi/pages/settings/sync/sync_settings_widgets.dart';
 import 'package:kazumi/services/storage/storage.dart';
-import 'package:kazumi/services/sync/bangumi_sync_service.dart';
 
 enum _SyncStatus {
   unconnected('未连接', Icons.link_off_rounded),
   unconfigured('未配置', Icons.settings_outlined),
-  connecting('正在连接', Icons.sync_rounded),
   connectionError('连接异常', Icons.error_outline_rounded),
   enabled('已开启', Icons.check_circle_outline_rounded),
   disabled('已关闭', Icons.pause_circle_outline_rounded),
@@ -38,16 +36,9 @@ class _SyncSettingsPageState extends State<SyncSettingsPage> {
   @override
   Widget build(BuildContext context) => SettingsDetailScaffold(
         title: const Text('同步设置'),
-        body: ListenableBuilder(
-          listenable: BangumiSyncService(),
-          builder: (context, _) {
-            final bangumi = BangumiSyncService();
-            final hasToken =
-                GStorage.getSetting(SettingsKeys.bangumiAccessToken)
-                    .trim()
-                    .isNotEmpty;
-            final bangumiEnabled =
-                GStorage.getSetting(SettingsKeys.bangumiSyncEnable);
+        body: Builder(
+          builder: (context) {
+            final hasToken = GStorage.bangumiAccount.isSignedIn;
             final hasServer =
                 GStorage.getSetting(SettingsKeys.webDavURL).trim().isNotEmpty;
             final webDavEnabled =
@@ -66,15 +57,7 @@ class _SyncSettingsPageState extends State<SyncSettingsPage> {
                 icon: Icons.bookmarks_rounded,
                 color: colors.secondaryContainer,
                 onColor: colors.onSecondaryContainer,
-                status: bangumi.isConnecting
-                    ? _SyncStatus.connecting
-                    : bangumi.lastError != null
-                        ? _SyncStatus.connectionError
-                        : !hasToken
-                            ? _SyncStatus.unconnected
-                            : bangumiEnabled
-                                ? _SyncStatus.enabled
-                                : _SyncStatus.disabled,
+                status: hasToken ? _SyncStatus.enabled : _SyncStatus.unconnected,
                 action: hasToken ? '管理追番同步' : '连接 Bangumi',
                 onPressed: () => _open('/settings/bangumi/'),
               ),

@@ -5,31 +5,30 @@ import 'package:kazumi/request/config/api_endpoints.dart';
 import 'package:kazumi/request/core/dio_factory.dart';
 import 'package:kazumi/request/core/network_error_mapper.dart';
 import 'package:kazumi/services/network/bangumi_acceleration.dart';
-import 'package:kazumi/services/storage/storage.dart';
 import 'package:kazumi/utils/bangumi_mirror_credentials.dart';
 import 'package:kazumi/utils/constants.dart';
 import 'package:kazumi/utils/crypto.dart';
 
 class BangumiClient {
-  BangumiClient._();
+  BangumiClient({Dio? dio, BangumiAcceleration Function()? acceleration})
+      : _dio = dio,
+        _acceleration = acceleration ?? (() => BangumiAcceleration.current);
 
-  static final BangumiClient instance = BangumiClient._();
+  static final BangumiClient instance = BangumiClient();
+  final Dio? _dio;
+  final BangumiAcceleration Function() _acceleration;
 
   Future<dynamic> get(
     String url, {
     Map<String, dynamic>? queryParameters,
-    bool requiresAuth = false,
-    String? accessToken,
     CancelToken? cancelToken,
   }) async {
     try {
-      final response = await DioFactory.bangumiDio.get(
+      final response = await (_dio ?? DioFactory.bangumiDio).get(
         url,
         queryParameters: queryParameters,
         options: Options(
           headers: _headers(
-            requiresAuth: requiresAuth,
-            accessToken: accessToken,
             url: url,
             method: 'GET',
           ),
@@ -46,17 +45,15 @@ class BangumiClient {
     String url, {
     Object? data,
     Map<String, dynamic>? queryParameters,
-    bool requiresAuth = false,
     CancelToken? cancelToken,
   }) async {
     try {
-      final response = await DioFactory.bangumiDio.post(
+      final response = await (_dio ?? DioFactory.bangumiDio).post(
         url,
         data: data,
         queryParameters: queryParameters,
         options: Options(
           headers: _headers(
-            requiresAuth: requiresAuth,
             url: url,
             method: 'POST',
             data: data,
@@ -71,23 +68,11 @@ class BangumiClient {
   }
 
   Map<String, dynamic> _headers({
-    required bool requiresAuth,
-    String? accessToken,
     required String url,
     required String method,
     Object? data,
   }) {
     final headers = <String, dynamic>{...bangumiHTTPHeader};
-    final bangumiSyncEnable = GStorage.getSetting(
-      SettingsKeys.bangumiSyncEnable,
-    );
-    final token =
-        (accessToken ??
-                GStorage.getSetting<String>(SettingsKeys.bangumiAccessToken))
-            .trim();
-    if ((requiresAuth || bangumiSyncEnable) && token.isNotEmpty) {
-      headers['Authorization'] = 'Bearer $token';
-    }
     if (_shouldSignProtectedMirrorRequest(url, method)) {
       final timestamp = DateTime.now().millisecondsSinceEpoch ~/ 1000;
       final body = data == null ? '' : jsonEncode(data);
@@ -105,7 +90,7 @@ class BangumiClient {
 
   bool _shouldSignProtectedMirrorRequest(String url, String method) {
     final uri = Uri.parse(url);
-    if (BangumiAcceleration.current != BangumiAcceleration.mirror ||
+    if (_acceleration() != BangumiAcceleration.mirror ||
         !ApiEndpoints.bangumiPublicApiHosts.contains(uri.host)) {
       return false;
     }

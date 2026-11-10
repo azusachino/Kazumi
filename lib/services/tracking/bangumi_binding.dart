@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:kazumi/modules/bangumi/bangumi_item.dart';
+import 'package:kazumi/modules/collect/collect_type.dart';
 
 import 'bangumi_account.dart';
 import 'models.dart';
@@ -39,6 +40,20 @@ class BangumiBindingManager {
       }
     });
     return result.future;
+  }
+
+  Future<void> statusChanged(BangumiItem item, CollectType type) async {
+    final status = switch (type) {
+      CollectType.watching => TrackStatus.current,
+      CollectType.planToWatch => TrackStatus.planning,
+      CollectType.onHold => TrackStatus.paused,
+      CollectType.watched => TrackStatus.completed,
+      CollectType.abandoned => TrackStatus.dropped,
+      CollectType.none => null,
+    };
+    if (status == null) return;
+    await ensureBangumiBinding(item);
+    await sync.enqueue(item.id, status: status);
   }
 
   Future<void> watched(BangumiItem item, int progress) async {

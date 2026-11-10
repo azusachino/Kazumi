@@ -148,6 +148,17 @@ class GStorage {
     });
   }
 
+  /// Insert only if no other local write has already added this subject.
+  static Future<bool> putCollectibleIfAbsent(CollectedBangumi collectible) {
+    return _runCollectChangesWriteExclusive(() async {
+      final id = collectible.bangumiItem.id;
+      if (collectibles.containsKey(id)) return false;
+      await collectibles.put(id, collectible);
+      await collectibles.flush();
+      return true;
+    });
+  }
+
   /// Delete a collectible using the shared collect write queue.
   static Future<void> deleteCollectible(int bangumiId) {
     return _runCollectChangesWriteExclusive(() async {

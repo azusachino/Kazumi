@@ -32,6 +32,8 @@ abstract class ICollectCrudRepository {
   /// [type] 收藏类型
   Future<void> addCollectible(BangumiItem bangumiItem, int type);
 
+  Future<bool> addCollectibleIfMissing(BangumiItem bangumiItem, int type);
+
   /// 更新收藏的番剧信息
   ///
   /// [bangumiItem] 更新后的番剧信息
@@ -121,6 +123,13 @@ class CollectCrudRepository implements ICollectCrudRepository {
       );
       rethrow;
     }
+  }
+
+  @override
+  Future<bool> addCollectibleIfMissing(BangumiItem bangumiItem, int type) {
+    return GStorage.putCollectibleIfAbsent(
+      CollectedBangumi(bangumiItem, DateTime.now(), type),
+    );
   }
 
   @override

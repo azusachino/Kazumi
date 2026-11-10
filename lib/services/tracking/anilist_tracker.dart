@@ -29,8 +29,9 @@ class AniListTracker implements Tracker {
       );
     }
     if (code != null && code >= 500) throw const TrackerServerException();
-    if (code != null)
+    if (code != null) {
       throw const TrackerRequestException('AniList request rejected');
+    }
     throw const TrackerNetworkException();
   }
 

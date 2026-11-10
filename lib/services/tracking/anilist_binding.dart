@@ -18,8 +18,9 @@ class AniListBindingManager {
     TrackStatus? initialStatus,
   }) async {
     final key = '${item.id}:${TrackerId.anilist.name}';
-    if (await bindings.get(key) != null)
+    if (await bindings.get(key) != null) {
       throw StateError('AniList already bound');
+    }
     final token = await account.validToken();
     if (token == null) throw const TrackerAuthException();
     final remote = await account.tracker.readEntry(token, result.id);

@@ -12,6 +12,7 @@ import 'package:kazumi/repositories/collect_crud_repository.dart';
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
 import 'package:kazumi/modules/bangumi/bangumi_item.dart';
 import 'package:kazumi/modules/collect/collect_module.dart';
+import 'package:kazumi/navigation.dart';
 import 'package:kazumi/modules/collect/collect_type.dart';
 import 'package:kazumi/pages/info/anilist_search_page.dart';
 import 'package:kazumi/pages/info/tracking_sheet.dart';
@@ -589,6 +590,56 @@ void main() {
     await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
     await tester.pump();
     expect(GStorage.trackingOutbox.get('123:bangumi')?.score, 20);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('a failed library mirror is visible and keeps the tracker edit',
+      (tester) async {
+    await tester.runAsync(() => GStorage.bangumiAccount.signInWithToken('token'));
+    await tester.runAsync(() async {
+      await _bindings.put(TrackingBinding(
+        subjectId: 123, trackerId: TrackerId.bangumi, remoteId: '123',
+      ));
+      // Local category 想看, so choosing 在看 must reach the mirror.
+      await CollectController(CollectCrudRepository())
+          .addCollectFromTracker(_item(), CollectType.planToWatch.value);
+    });
+    GStorage.trackingSync.dispose();
+    var mirrorCalls = 0;
+    await tester.pumpWidget(MaterialApp(
+      scaffoldMessengerKey: rootScaffoldMessengerKey,
+      home: Scaffold(
+        body: TrackingSheet(
+          item: _item(),
+          onMirrorStatus: (item, type) async {
+            mirrorCalls++;
+            throw StateError('local write');
+          },
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('状态'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.descendant(
+      of: find.byType(AlertDialog), matching: find.text('在看'),
+    ));
+    await tester.tap(find.text('确定'));
+    await tester.pumpAndSettle();
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 50)),
+    );
+    await tester.pump();
+    expect(GStorage.trackingOutbox.get('123:bangumi')?.status, TrackStatus.current);
+
+    // The mirror runs after the awaited tracker enqueue; let it run.
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 10)),
+    );
+    await tester.pumpAndSettle();
+    expect(mirrorCalls, 1);
+    expect(GStorage.collectibles.get(123)?.type, CollectType.planToWatch.value);
+    expect(find.text('本地追番状态未更新，追踪状态已保存'), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
   });
 

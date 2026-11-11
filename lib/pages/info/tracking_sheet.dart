@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_modular/flutter_modular.dart';
 import 'package:hive_ce_flutter/hive_flutter.dart';
 import 'package:kazumi/bean/dialog/adaptive_bottom_sheet.dart';
+import 'package:kazumi/bean/dialog/dialog.dart';
 import 'package:kazumi/bean/widget/tracker_logo.dart';
 import 'package:kazumi/modules/bangumi/bangumi_item.dart';
 import 'package:kazumi/modules/bangumi/bangumi_title.dart';
@@ -270,6 +271,13 @@ class _TrackingSheetState extends State<TrackingSheet> {
         KazumiLogger().e(
           'Tracking: failed to mirror status into the library',
           error: e,
+        );
+        // The tracker write already landed; name what did not happen so a
+        // local failure is not mistaken for a tracker one.
+        if (!mounted) return;
+        KazumiDialog.showToast(
+          context: context,
+          message: '本地追番状态未更新，追踪状态已保存',
         );
       }),
     );

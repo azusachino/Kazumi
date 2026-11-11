@@ -6,6 +6,7 @@ import 'package:kazumi/services/logging/logger.dart';
 import 'models.dart';
 import 'stores.dart';
 import 'tracker.dart';
+import 'tracking_entry_cache.dart';
 
 typedef TrackingTimer = void Function();
 typedef TrackingSchedule =
@@ -27,6 +28,7 @@ class TrackingSync {
     DateTime Function()? clock,
     Future<void> Function(Duration)? delay,
     TrackingSchedule? schedule,
+    this.cache,
   }) : trackers = {for (final tracker in trackers) tracker.id: tracker},
        clock = clock ?? DateTime.now,
        delay = delay ?? Future<void>.delayed,
@@ -39,6 +41,7 @@ class TrackingSync {
   final DateTime Function() clock;
   final Future<void> Function(Duration) delay;
   final TrackingSchedule schedule;
+  final TrackingEntryCache? cache;
   final Map<TrackerId, DateTime> _lastCall = {};
   final Map<TrackerId, DateTime> _pausedUntil = {};
   Future<void> _queue = Future.value();
@@ -203,6 +206,9 @@ class TrackingSync {
     try {
       final token = await tokenProvider(tracker.id);
       if (token == null || token.isEmpty) throw const TrackerAuthException();
+      // Captured before the read: a later account switch must not let this
+      // response populate the new account's cached row.
+      final scope = cache?.scopeFor(tracker.id);
       final remote = await _call(tracker.id, () async {
         await _checkBinding(row);
         return tracker.readEntry(token, row.remoteId);
@@ -243,10 +249,19 @@ class TrackingSync {
           );
         });
       }
+      final effective = RemoteEntry(
+        progress: stored,
+        status: statusDelta ?? remote?.status ?? status ?? TrackStatus.current,
+        score: scoreDelta ?? remote?.score,
+        total: total,
+      );
       await _exclusive(() async {
         final currentBinding = await bindings.get(key);
         if (_matches(currentBinding, row)) {
-          await bindings.put(currentBinding!.synced(stored, clock()));
+          // Refresh the drawer's snapshot before the outbox row disappears,
+          // so clearing a pending row never reverts the UI to stale state.
+          await _remember(currentBinding!, effective, clock(), scope);
+          await bindings.put(currentBinding.synced(stored, clock()));
         }
         final current = await outbox.get(key);
         if (current?.revision == row.revision &&
@@ -263,6 +278,22 @@ class TrackingSync {
       // Exception text and stack traces may contain credentials or headers.
       KazumiLogger().e('Tracking: unexpected ${tracker.id.name} sync error');
       await _handleFailure(tracker.id, row, const TrackerServerException());
+    }
+  }
+
+  Future<void> _remember(
+    TrackingBinding binding,
+    RemoteEntry? entry,
+    DateTime at,
+    String? scope,
+  ) async {
+    final cache = this.cache;
+    if (cache == null) return;
+    try {
+      await cache.put(binding, entry, at, scope: scope);
+    } catch (_) {
+      // A cache failure must not turn a successful remote write into a retry.
+      KazumiLogger().w('Tracking: failed to update entry cache');
     }
   }
 

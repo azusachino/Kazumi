@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -22,6 +23,7 @@ import 'package:kazumi/services/tracking/bangumi_binding.dart';
 import 'package:kazumi/services/tracking/models.dart';
 import 'package:kazumi/services/tracking/stores.dart';
 import 'package:kazumi/services/tracking/tracker.dart';
+import 'package:kazumi/services/tracking/tracking_entry_cache.dart';
 import 'package:kazumi/services/tracking/tracking_sync.dart';
 
 class _TestPaths extends PathProviderPlatform {
@@ -39,6 +41,8 @@ class _FakeTracker implements Tracker {
   RemoteEntry? remote;
   List<TrackerSearchResult> results = const [];
   int saves = 0;
+  int reads = 0;
+  Completer<void>? readGate;
   bool failReads = false;
   String? lastQuery;
 
@@ -57,6 +61,9 @@ class _FakeTracker implements Tracker {
   }
   @override
   Future<RemoteEntry?> readEntry(String token, String remoteId) async {
+    reads++;
+    final gate = readGate;
+    if (gate != null) await gate.future;
     if (failReads) throw const TrackerNetworkException();
     return remote;
   }
@@ -141,6 +148,11 @@ Future<void> _setup() async {
     tokenProvider: (_) async => 'token',
     delay: (_) async {},
     schedule: (_, _) => () {},
+  );
+  GStorage.trackingEntryCache = TrackingEntryCache(
+    accountScope: (id) => id == TrackerId.bangumi
+        ? GStorage.bangumiAccount.username
+        : GStorage.anilistAccount.username,
   );
   GStorage.bangumiBindingManager = BangumiBindingManager(
     GStorage.bangumiAccount,
@@ -653,6 +665,86 @@ void main() {
     await tester.pump();
     expect(GStorage.anilistAccount.isSignedIn, isFalse);
     expect(find.text('已退出登录'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('fresh cached tracker state avoids another network read on reopen', (tester) async {
+    await tester.runAsync(() => GStorage.bangumiAccount.signInWithToken('token'));
+    final binding = TrackingBinding(
+      subjectId: 123, trackerId: TrackerId.bangumi, remoteId: '123',
+    );
+    await tester.runAsync(() async {
+      await _bindings.put(binding);
+      await GStorage.trackingEntryCache.put(
+        binding,
+        const RemoteEntry(progress: 3, status: TrackStatus.current, total: 12),
+        DateTime.now(),
+      );
+    });
+    for (var open = 0; open < 2; open++) {
+      await tester.pumpWidget(MaterialApp(home: Material(child: TrackingSheet(item: _item()))));
+      await tester.pumpAndSettle();
+      expect(find.text('在看'), findsOneWidget);
+      expect(find.text('3 / 12'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+    }
+    expect(_bangumiTracker.reads, 0);
+  });
+
+  testWidgets('stale cached state stays visible while its refresh is outstanding', (tester) async {
+    await tester.runAsync(() => GStorage.bangumiAccount.signInWithToken('token'));
+    final binding = TrackingBinding(
+      subjectId: 123, trackerId: TrackerId.bangumi, remoteId: '123',
+    );
+    final gate = Completer<void>();
+    _bangumiTracker.readGate = gate;
+    _bangumiTracker.remote = const RemoteEntry(
+      progress: 4, status: TrackStatus.current, total: 12,
+    );
+    await tester.runAsync(() async {
+      await _bindings.put(binding);
+      await GStorage.trackingEntryCache.put(
+        binding,
+        const RemoteEntry(progress: 3, status: TrackStatus.planning, total: 12),
+        DateTime.now().subtract(const Duration(minutes: 10)),
+      );
+    });
+    await tester.pumpWidget(MaterialApp(home: Material(child: TrackingSheet(item: _item()))));
+    await tester.pump();
+    expect(find.text('想看'), findsOneWidget);
+    expect(find.text('3 / 12'), findsOneWidget);
+    expect(find.text('读取中…'), findsNothing);
+    gate.complete();
+    await tester.pumpAndSettle();
+    expect(find.text('在看'), findsOneWidget);
+    expect(find.text('4 / 12'), findsOneWidget);
+    expect(_bangumiTracker.reads, 1);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('number picker stays a compact dialog on a wide tablet', (tester) async {
+    tester.view.physicalSize = const Size(1200, 1600);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.runAsync(() => GStorage.bangumiAccount.signInWithToken('token'));
+    await tester.runAsync(() => _bindings.put(TrackingBinding(
+      subjectId: 123, trackerId: TrackerId.bangumi, remoteId: '123', total: 12,
+    )));
+    _bangumiTracker.remote = const RemoteEntry(
+      progress: 4, status: TrackStatus.planning, total: 12,
+    );
+    await tester.pumpWidget(MaterialApp(home: Material(child: TrackingSheet(item: _item()))));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('4 / 12'));
+    await tester.pumpAndSettle();
+    // AlertDialog's render box is the full-screen route; the wheel is the
+    // actual dialog content whose width the compact constraint controls.
+    final width = tester.getSize(find.byType(ListWheelScrollView)).width;
+    expect(width, lessThanOrEqualTo(360));
+    expect(width, greaterThanOrEqualTo(240));
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
     await tester.pumpWidget(const SizedBox());
   });
 }

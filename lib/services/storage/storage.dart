@@ -22,6 +22,7 @@ import 'package:kazumi/services/tracking/bangumi_tracker.dart';
 import 'package:kazumi/services/tracking/tracker.dart';
 import 'package:kazumi/services/tracking/models.dart';
 import 'package:kazumi/services/tracking/stores.dart';
+import 'package:kazumi/services/tracking/tracking_entry_cache.dart';
 import 'package:kazumi/services/tracking/tracking_sync.dart';
 
 import 'package:kazumi/services/storage/settings_keys.dart';
@@ -40,6 +41,7 @@ class GStorage {
   static late Box<TrackingBinding> trackingBindings;
   static late Box<int> trackingTombstones;
   static late Box<OutboxEntry> trackingOutbox;
+  static late TrackingEntryCache trackingEntryCache;
   static late TrackingSync trackingSync;
   static late BangumiAccount bangumiAccount;
   static late AniListAccount anilistAccount;
@@ -191,6 +193,9 @@ class GStorage {
     trackingBindings = await _openBoxSafe<TrackingBinding>('trackingBindings');
     trackingTombstones = await _openBoxSafe<int>('trackingTombstones');
     trackingOutbox = await _openBoxSafe<OutboxEntry>('trackingOutbox');
+    final trackingEntryCacheBox = await _openBoxSafe<String>(
+      'trackingEntryCache',
+    );
     final tracker = BangumiTracker();
     final anilistTracker = AniListTracker();
     final bindings = HiveBindingStore(trackingBindings);
@@ -211,6 +216,12 @@ class GStorage {
       trackers: [tracker, anilistTracker],
       tokenProvider: (id) => id == TrackerId.bangumi
           ? bangumiAccount.validToken() : anilistAccount.validToken(),
+      cache: trackingEntryCache = TrackingEntryCache(
+        box: trackingEntryCacheBox,
+        accountScope: (id) => id == TrackerId.bangumi
+            ? bangumiAccount.username
+            : anilistAccount.username,
+      ),
     );
     bangumiBindingManager = BangumiBindingManager(
       bangumiAccount,

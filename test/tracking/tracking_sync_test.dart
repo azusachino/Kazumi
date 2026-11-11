@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:kazumi/services/tracking/models.dart';
 import 'package:kazumi/services/tracking/stores.dart';
 import 'package:kazumi/services/tracking/tracker.dart';
+import 'package:kazumi/services/tracking/tracking_entry_cache.dart';
 import 'package:kazumi/services/tracking/tracking_sync.dart';
 import 'package:logger/logger.dart';
 
@@ -85,6 +86,8 @@ class FakeTracker implements Tracker {
 }
 
 class Harness {
+  Harness({this.cache});
+  final TrackingEntryCache? cache;
   final bindings = MemoryBindings();
   final outbox = MemoryOutbox();
   final a = FakeTracker(TrackerId.bangumi);
@@ -100,6 +103,7 @@ class Harness {
       now = now.add(d);
     },
     schedule: (_, _) => () {},
+    cache: cache,
   );
   Future<void> bind({
     TrackerId id = TrackerId.bangumi,
@@ -401,5 +405,25 @@ void main() {
     );
     await h.sync.drain();
     expect(h.outbox.rows, isEmpty);
+  });
+
+  test('a successful drain refreshes the entry cache before clearing the row', () async {
+    final cache = TrackingEntryCache();
+    final syncing = Harness(cache: cache);
+    addTearDown(syncing.sync.dispose);
+    await syncing.bind(total: 12);
+    syncing.a.remote = const RemoteEntry(
+      progress: 1,
+      status: TrackStatus.planning,
+      total: 12,
+    );
+    await syncing.enqueue(status: TrackStatus.current);
+    expect(syncing.outbox.rows, isEmpty);
+    final binding = syncing.bindings.rows.values.single;
+    final snapshot = cache.get(binding);
+    expect(snapshot?.entry?.status, TrackStatus.current);
+    expect(snapshot?.entry?.progress, 1);
+    expect(snapshot?.entry?.total, 12);
+    expect(snapshot?.isFresh(syncing.now), isTrue);
   });
 }

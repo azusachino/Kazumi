@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_modular/flutter_modular.dart';
@@ -29,8 +31,6 @@ class TrackingSheet extends StatefulWidget {
 }
 
 class _TrackingSheetState extends State<TrackingSheet> {
-  final Map<String, RemoteEntry?> _remote = {};
-  final Map<String, String> _remoteGeneration = {};
   int _revision = 0;
   final Set<String> _reading = {};
   final Set<String> _loaded = {};
@@ -55,8 +55,6 @@ class _TrackingSheetState extends State<TrackingSheet> {
   void _refresh() {
     _revision++;
     _loaded.clear();
-    _remote.clear();
-    _remoteGeneration.clear();
     _readErrors.clear();
     if (mounted) setState(() {});
   }
@@ -69,10 +67,22 @@ class _TrackingSheetState extends State<TrackingSheet> {
     TrackStatus.dropped => '抛弃',
   };
 
-  Future<void> _read(TrackingBinding binding) async {
-    if (_reading.contains(binding.key) || _loaded.contains(binding.key)) return;
+  Future<void> _read(TrackingBinding binding, {bool force = false}) async {
+    if (_reading.contains(binding.key)) return;
+    final cache = GStorage.trackingEntryCache;
+    final snapshot = cache.get(binding);
+    if (!force) {
+      // A fresh snapshot renders immediately and needs no network read.
+      if (snapshot != null && snapshot.isFresh(DateTime.now())) {
+        _loaded.add(binding.key);
+        _readErrors.remove(binding.key);
+        return;
+      }
+      if (_loaded.contains(binding.key)) return;
+    }
     _reading.add(binding.key);
     final revision = _revision;
+    final scope = cache.scopeFor(binding.trackerId);
     try {
       final token = binding.trackerId == TrackerId.bangumi
           ? await GStorage.bangumiAccount.validToken()
@@ -84,11 +94,13 @@ class _TrackingSheetState extends State<TrackingSheet> {
           mounted &&
           GStorage.trackingBindings.get(binding.key)?.generation ==
               binding.generation) {
+        // Always keyed to the account captured before the read, so a response
+        // that crosses a sign-in cannot populate the new account.
+        await cache.put(binding, entry, DateTime.now(), scope: scope);
+        if (scope != cache.scopeFor(binding.trackerId)) return;
         _loaded.add(binding.key);
-        setState(() {
-          _remote[binding.key] = entry;
-          _remoteGeneration[binding.key] = binding.generation;
-        });
+        _readErrors.remove(binding.key);
+        setState(() {});
       }
     } catch (_) {
       if (revision == _revision && mounted) {
@@ -324,18 +336,24 @@ class _TrackingSheetState extends State<TrackingSheet> {
       );
     }
     _read(binding);
+    final snapshot = GStorage.trackingEntryCache.get(binding);
+    // A remembered null entry means the tracker has nothing for this subject;
+    // a missing snapshot means this device has not read it yet.
+    final known = snapshot != null || _loaded.contains(key);
+    final entry = snapshot?.entry;
     final queued = GStorage.trackingOutbox.get(key);
     final pending = queued?.bindingGeneration == binding.generation &&
             queued?.remoteId == binding.remoteId
         ? queued
         : null;
-    final entry = _remoteGeneration[key] == binding.generation
-        ? _remote[key]
-        : null;
     final status = pending?.status ?? entry?.status;
-    final progress = pending?.progress ?? entry?.progress ?? binding.lastRemoteProgress ?? 0;
+    final progress = pending?.progress ??
+        entry?.progress ??
+        (snapshot != null ? 0 : binding.lastRemoteProgress ?? 0);
     final total = entry?.total ?? binding.total;
-    final score = pending?.score ?? entry?.score ?? binding.score;
+    final score = pending?.score ??
+        entry?.score ??
+        (snapshot != null ? null : binding.score);
     final title = id == TrackerId.bangumi
         ? widget.item.displayTitle
         : (binding.title?.isNotEmpty == true ? binding.title! : 'AniList');
@@ -382,6 +400,13 @@ class _TrackingSheetState extends State<TrackingSheet> {
                     _copy(_uri(binding).toString());
                   case 'offset':
                     _editOffset(binding);
+                  case 'refresh':
+                    await GStorage.trackingEntryCache.remove(binding);
+                    setState(() {
+                      _loaded.remove(binding.key);
+                      _readErrors.remove(binding.key);
+                    });
+                    await _read(binding, force: true);
                   case 'remove':
                     await _remove(binding);
                 }
@@ -390,6 +415,7 @@ class _TrackingSheetState extends State<TrackingSheet> {
                 PopupMenuItem(value: 'open', child: Text('在浏览器中打开')),
                 PopupMenuItem(value: 'copy', child: Text('复制链接')),
                 PopupMenuItem(value: 'offset', child: Text('集数偏移')),
+                PopupMenuItem(value: 'refresh', child: Text('刷新状态')),
                 PopupMenuItem(value: 'remove', child: Text('移除')),
               ],
             ),
@@ -407,7 +433,7 @@ class _TrackingSheetState extends State<TrackingSheet> {
                 _cell(
                   status != null ? _status(status) :
                       _readErrors.contains(key) ? '读取失败' :
-                      _loaded.contains(key) ? '状态' : '读取中…',
+                      known ? '状态' : '读取中…',
                   () => _selectStatus(binding, status),
                 ),
                 const VerticalDivider(width: 1),
@@ -442,10 +468,13 @@ class _TrackingSheetState extends State<TrackingSheet> {
             children: [
               const Expanded(child: Text('无法读取追踪状态')),
               TextButton(
-                onPressed: () => setState(() {
-                  _loaded.remove(key);
-                  _readErrors.remove(key);
-                }),
+                onPressed: () {
+                  setState(() {
+                    _loaded.remove(key);
+                    _readErrors.remove(key);
+                  });
+                  _read(binding, force: true);
+                },
                 child: const Text('重新读取'),
               ),
             ],
@@ -531,7 +560,12 @@ class _NumberDialogState extends State<_NumberDialog> {
             decoration: const InputDecoration(border: OutlineInputBorder()),
           )
         : SizedBox(
-            width: double.maxFinite,
+            // Material dialog width, not the whole tablet: a full-width
+            // number wheel reads as a page, not a selector.
+            width: math.min(
+              320,
+              MediaQuery.sizeOf(context).width - 120,
+            ),
             height: 200,
             child: Stack(
               alignment: Alignment.center,

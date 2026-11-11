@@ -190,5 +190,8 @@ Verification:
 installed on the owner's OnePlus PLR110 at the owner's request after the
 pad gate: `adb install -r` exited 0 with `Success`, package inspection
 confirmed `2.4.3-haru.9` / `20408`, and `firstInstallTime=2026-11-10 20:21:19`
-was preserved. The pad remains on haru.8; owner acceptance of the
+was preserved. The OnePlus Pad (`2f11f2ca`) was then updated with the same
+APK: `adb install -r` exited 0 with `Success`, inspection confirmed
+`2.4.3-haru.9` / `20408`, and its `firstInstallTime=2026-11-10 21:24:19` was
+preserved. Both devices now run haru.9; owner acceptance of the
 default-status behaviour is pending on device.

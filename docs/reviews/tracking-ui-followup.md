@@ -232,3 +232,36 @@ Verification:
 - Plain `mise exec -- flutter analyze` exit 0, no issues. Full
   `mise exec -- flutter test` exit 0, 332 passed.
 - Self-review only.
+
+### Audit: known gaps in the mirror
+
+Checked against the code it touches; none of these block the reported behaviour,
+but they are the limits a later reader should know.
+
+- **Silent local failure.** The mirror is fire-and-forget, so a failed local
+  write is logged only. The drawer then shows the tracker's new status while the
+  追番 list keeps the old category until the next attempt. Surfacing it would
+  need a toast path the sheet does not have.
+- **The library row is rewritten from the sheet's item.** `addCollectible`
+  stores a new `CollectedBangumi` (item, timestamp, type), so mirroring resets
+  the entry's timestamp and copies the info-page item over the stored one. This
+  matches every other collect write, but a partial info-page item would replace
+  a richer stored row.
+- **Direction is asymmetric.** From 追番, `statusChanged` enqueues without a
+  tracker id, so both bound trackers follow. From the drawer, only the row the
+  owner touched is written. Setting 在看 on the AniList row therefore leaves
+  Bangumi at its previous status; this is deliberate for an explicit
+  per-tracker action, not an oversight.
+- **No removal from the drawer.** Deletion stays in the 追番 screens; the drawer
+  only sets categories.
+- **Tracker-side edits do not move the library.** A status changed on bgm.tv,
+  on AniList, or on another device never writes this device's local category;
+  the 追番 list only follows local writes and mirrored drawer edits.
+- **A drained failure still leaves local ahead.** `enqueue` succeeds locally
+  even when the later tracker write fails, so local says 在看 while the tracker
+  keeps 想看 until the outbox retries; the drawer already shows that pending or
+  failed row.
+- **Coverage split.** The widget test exercises the `onMirrorStatus` seam, not
+  the real write; `CollectController.addCollectFromTracker` is covered by its
+  own unit test. No test drives the real Hive write through a widget tap, by
+  design (that combination deadlocks in the fake-async zone).

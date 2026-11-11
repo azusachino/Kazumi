@@ -289,12 +289,12 @@ It follows the owner's animeko setting (fork PR #2,
 
 ## Collection button as the tracking entry
 
-The info page's collection-status button ("在看", "未追", …) is the single
-entry: it keeps its label, adds the number of bound trackers, and opens the
-tracking sheet. The sheet's top "收藏" row sets Kazumi's local status
-(including 未追, which removes locally) through the existing collection
-paths, so trackers receive the status as before. The separate 追踪 icon is
-gone. The Bangumi block shows the subject's display title (follows 显示原名).
+The info page's collection-status button ("在看", "未追", …) keeps its
+label, adds the number of bound trackers, and opens the tracker-only sheet.
+Local collection status remains managed through the existing collection and
+library flows; the tracking sheet exposes status, progress and score controls
+for each signed-in tracker. The separate 追踪 icon is gone. The Bangumi block
+shows the subject's display title (follows 显示原名).
 
 Build, verification and upstream-sync notes live in the owner's workstation
 KB (`docs/projects/kazumi.md`), not in this repository.

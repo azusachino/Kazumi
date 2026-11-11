@@ -88,13 +88,34 @@ on the pad creates the binding (expected per `statusChanged`).
 
 ## Resolution
 
-Resolved by [`tracking-sync-plan.md`](plans/tracking-sync-plan.md), slices 1–6:
+Resolved by [`tracking-sync-plan.md`](plans/tracking-sync-plan.md), slices 1–7:
 collected Bangumi bindings are ensured during import, WebDAV sync and startup
 backfill; AniList bindings, tombstones and Bangumi opt-outs merge through
-`/kazumiSync/tracking.json`. The outbox remains per-device. Verification uses
-fake trackers and a fake WebDAV client; no live account or device was used.
-Pre-slice-7 gates: `mise exec -- flutter test` exited 0 with 311 tests
-passing. `mise exec -- flutter analyze` exited 1 with 17 info-level findings,
-all in untouched files; the modified files had no findings after removing the
-one redundant import. These results will be rerun after the tracker-only sheet
-follow-up. Final commit IDs and gate evidence will be recorded after that run.
+`/kazumiSync/tracking.json`. The outbox remains per-device. The tracking sheet
+now contains tracker-specific controls only; local collection remains managed
+through collection/library flows. Verification uses fake trackers and a fake
+WebDAV client; no live account or device was used.
+
+Slice-6 gate evidence: `mise exec -- flutter test` exited 0 with 311 tests
+passing. Plain `mise exec -- flutter analyze` exited 1 with 17 info findings.
+The exact transcript is temporarily saved at
+`/Users/azusachino/Projects/project-github/harus-workstation/.tmp/kazumi-tracking-sync/luna/flutter-analyze-slice6.log`.
+Findings were `unnecessary_underscores` at
+`lib/pages/info/info_comments_view.dart:103:43,141:38`,
+`lib/pages/player/danmaku_source_sheet.dart:57:39,477:35`,
+`lib/pages/timeline/timeline_page.dart:69:37`,
+`lib/utils/async_single_flight.dart:17:38`, and
+`test/plugin_import_parser_test.dart:212:28,212:32`;
+`use_null_aware_elements` at
+`lib/pages/player/syncplay_sheet.dart:144:19`,
+`lib/pages/search/image_search_page.dart:384:9`,
+`lib/pages/video/video_controller.dart:248:7`, and
+`lib/services/plugin/rule_engine.dart:317:7`; `avoid_print` at
+`lib/services/logging/logger.dart:116:7,143:9,250:5`,
+`lib/webview/video/impl/video_webview_android_impl.dart:35:11`, and
+`lib/webview/video/impl/video_webview_impl.dart:33:11`.
+
+After this run, the lead authorized a separate eighth local commit to repair
+these mechanical baseline findings without weakening analysis configuration.
+Final analyze and test gates are pending that cleanup and the tracker-only UI
+commit; the task must remain incomplete until plain `flutter analyze` exits 0.

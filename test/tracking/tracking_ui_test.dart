@@ -246,7 +246,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('4 / 12'), findsOneWidget);
     expect(find.text('8.0'), findsOneWidget);
-    expect(find.text('在看'), findsNWidgets(2));
+    expect(find.text('在看'), findsOneWidget);
     expect(find.textContaining('同步失败'), findsOneWidget);
     expect(find.text('重试'), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
@@ -415,9 +415,61 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('collection button opens sheet and updates local status and bindings', (tester) async {
+  testWidgets('tracking sheet has tracker controls without local collection picker', (tester) async {
+    await tester.runAsync(() => GStorage.bangumiAccount.signInWithToken('token'));
+    await tester.runAsync(() => GStorage.anilistAccount.signInWithToken('token'));
+    await tester.runAsync(() async {
+      await _bindings.put(TrackingBinding(
+        subjectId: 123, trackerId: TrackerId.bangumi, remoteId: '123',
+      ));
+      await _bindings.put(TrackingBinding(
+        subjectId: 123, trackerId: TrackerId.anilist, remoteId: '42',
+      ));
+    });
+    GStorage.trackingSync.dispose();
+    await tester.pumpWidget(MaterialApp(home: Material(child: TrackingSheet(item: _item()))));
+    await tester.pumpAndSettle();
+
+    expect(find.text('收藏'), findsNothing);
+    expect(find.byType(ChoiceChip), findsNothing);
+    expect(find.text('状态'), findsNWidgets(2));
+    expect(find.text('评分'), findsNWidgets(2));
+    await tester.tap(find.text('状态').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.descendant(
+      of: find.byType(AlertDialog), matching: find.text('在看'),
+    ));
+    await tester.tap(find.text('确定'));
+    await tester.pumpAndSettle();
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 50)),
+    );
+    await tester.pump();
+
+    expect(GStorage.trackingOutbox.get('123:bangumi')?.status, TrackStatus.current);
+    expect(GStorage.trackingOutbox.get('123:anilist'), isNull);
+
+    await tester.ensureVisible(find.text('状态').last);
+    await tester.tap(find.text('状态').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.descendant(
+      of: find.byType(AlertDialog), matching: find.text('抛弃'),
+    ));
+    await tester.tap(find.text('确定'));
+    await tester.pumpAndSettle();
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 50)),
+    );
+    await tester.pump();
+    expect(GStorage.trackingOutbox.get('123:anilist')?.status, TrackStatus.dropped);
+    expect(GStorage.trackingOutbox.get('123:bangumi')?.status, TrackStatus.current);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('collection button opens sheet and controller updates local status and bindings', (tester) async {
     await tester.runAsync(() => GStorage.bangumiAccount.signInWithToken('token'));
     GStorage.trackingSync.dispose();
+    final controller = CollectController(CollectCrudRepository());
     var opened = 0;
     var closed = 0;
     await tester.pumpWidget(MaterialApp(home: Scaffold(body: Center(
@@ -430,21 +482,22 @@ void main() {
     await tester.pumpAndSettle();
     expect(opened, 1);
     expect(find.byType(TrackingSheet), findsOneWidget);
-    await tester.runAsync(() async {
-      await tester.tap(find.text('在看'));
-      await Future<void>.delayed(const Duration(milliseconds: 100));
-    });
+    expect(find.text('收藏'), findsNothing);
+    expect(find.byType(ChoiceChip), findsNothing);
+
+    await tester.runAsync(() => controller.addCollect(_item(), type: 1));
     await tester.pumpAndSettle();
     expect(GStorage.collectibles.get(123)?.type, 1);
     expect(GStorage.trackingOutbox.get('123:bangumi')?.status, TrackStatus.current);
     expect(GStorage.trackingBindings.get('123:bangumi')?.title, 'Example');
     expect(find.text('在看 · 1'), findsOneWidget);
-    await tester.runAsync(() async {
-      await tester.tap(find.text('未追'));
-      await Future<void>.delayed(const Duration(milliseconds: 100));
-    });
+    expect(find.text('状态'), findsOneWidget);
+
+    await tester.runAsync(() => controller.deleteCollect(_item()));
     await tester.pumpAndSettle();
     expect(GStorage.collectibles.get(123), isNull);
+    expect(GStorage.trackingBindings.get('123:bangumi'), isNotNull);
+    expect(GStorage.trackingOutbox.get('123:bangumi')?.status, TrackStatus.current);
     Navigator.of(tester.element(find.byType(TrackingSheet))).pop();
     await tester.pumpAndSettle();
     expect(closed, 1);

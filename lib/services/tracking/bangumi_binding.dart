@@ -101,7 +101,16 @@ class BangumiBindingManager {
       ids,
     );
     await tombstones.delete('${item.id}:${TrackerId.bangumi.name}');
-    await _ensureBinding(item);
+    // An explicit add owes 想看 (planning); implicit binding creation does not.
+    // An already-bound subject keeps whatever status the tracker already has.
+    final created = await _ensureBinding(item);
+    if (created) {
+      await sync.enqueue(
+        item.id,
+        status: TrackStatus.planning,
+        trackerId: TrackerId.bangumi,
+      );
+    }
   });
 
   Future<void> statusChanged(BangumiItem item, CollectType type) async {

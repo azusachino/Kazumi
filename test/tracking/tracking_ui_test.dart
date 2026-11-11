@@ -11,6 +11,7 @@ import 'package:kazumi/pages/collect/collect_controller.dart';
 import 'package:kazumi/repositories/collect_crud_repository.dart';
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
 import 'package:kazumi/modules/bangumi/bangumi_item.dart';
+import 'package:kazumi/modules/collect/collect_module.dart';
 import 'package:kazumi/modules/collect/collect_type.dart';
 import 'package:kazumi/pages/info/anilist_search_page.dart';
 import 'package:kazumi/pages/info/tracking_sheet.dart';
@@ -303,6 +304,36 @@ void main() {
     await controller.addCollectFromTracker(item, CollectType.watched.value);
     expect(GStorage.collectibles.get(123)?.type, CollectType.watched.value);
     expect(GStorage.trackingOutbox, isEmpty);
+  });
+
+  test('mirroring a status keeps the stored item and its timestamp', () async {
+    final controller = CollectController(CollectCrudRepository());
+    final stored = _item()..name = 'Stored richer title';
+    final addedAt = DateTime(2020, 1, 2, 3, 4, 5);
+    await GStorage.collectibles.put(
+      123,
+      CollectedBangumi(stored, addedAt, CollectType.planToWatch.value),
+    );
+
+    await controller.addCollectFromTracker(_item(), CollectType.watching.value);
+
+    final row = GStorage.collectibles.get(123)!;
+    expect(row.type, CollectType.watching.value);
+    expect(row.bangumiItem.name, 'Stored richer title');
+    expect(row.time, addedAt);
+    expect(
+      GStorage.collectChanges.values.where((change) => change.bangumiID == 123),
+      hasLength(1),
+    );
+
+    // An absent row is still inserted with the sheet's item.
+    await controller.addCollectFromTracker(
+      _item()..id = 456,
+      CollectType.watched.value,
+    );
+    final inserted = GStorage.collectibles.get(456)!;
+    expect(inserted.type, CollectType.watched.value);
+    expect(inserted.bangumiItem.id, 456);
   });
 
   testWidgets('signed-out state points to account settings', (tester) async {

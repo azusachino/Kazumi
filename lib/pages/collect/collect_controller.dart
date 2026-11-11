@@ -63,7 +63,11 @@ abstract class _CollectController with Store {
   Future<void> addCollectFromTracker(BangumiItem bangumiItem, int type) async {
     if (type == CollectType.none.value) return;
     final currentCollectType = getCollectType(bangumiItem);
-    await _collectCrudRepository.addCollectible(bangumiItem, type);
+    // An existing row keeps its stored item and timestamp; the category is
+    // the only thing a tracker status owns.
+    if (!await _collectCrudRepository.setCollectType(bangumiItem.id, type)) {
+      await _collectCrudRepository.addCollectible(bangumiItem, type);
+    }
     await GStorage.appendCollectChange(
       bangumiId: bangumiItem.id,
       action: currentCollectType == 0 ? 1 : 2,

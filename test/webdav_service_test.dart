@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hive_ce/hive.dart';
 import 'package:kazumi/modules/bangumi/bangumi_item.dart';
 import 'package:kazumi/modules/collect/collect_module.dart';
+import 'package:kazumi/modules/tracking/tracking_sync_file.dart';
 import 'package:kazumi/modules/danmaku/danmaku_shield_sync.dart';
 import 'package:kazumi/repositories/danmaku_shield_repository.dart';
 import 'package:kazumi/services/storage/storage.dart';
@@ -282,6 +283,47 @@ void main() {
     expect(converged.remoteId, 'rebound');
     expect(converged.generation, isNot(first.generation));
     expect(GStorage.trackingTombstones.containsKey(key), isFalse);
+  });
+
+  test('tracking sync recovers a local binding and tombstone crash window', () async {
+    final client = _MemoryWebDavClient();
+    webDav.client = client;
+    webDav.initialized = true;
+    webDav.webDavLocalTempDirectory = Directory('${directory.path}/webdavTemp');
+    await webDav.webDavLocalTempDirectory.create(recursive: true);
+    await GStorage.trackingBindings.clear();
+    await GStorage.trackingTombstones.clear();
+    await GStorage.putSetting(SettingsKeys.bangumiExcludedSubjectIds, <String>[]);
+    const key = '61:anilist';
+    final bindingTime = DateTime.utc(2026, 4, 2);
+    final binding = TrackingBinding(
+      subjectId: 61,
+      trackerId: TrackerId.anilist,
+      remoteId: 'live-match',
+      updatedAt: bindingTime,
+    );
+    await GStorage.trackingBindings.put(key, binding);
+    await GStorage.trackingTombstones.put(
+      key,
+      DateTime.utc(2026, 4, 1).millisecondsSinceEpoch,
+    );
+
+    await webDav.syncTracking();
+
+    const path = '/kazumiSync/tracking.json';
+    final firstUpload = client.files[path]!;
+    final normalized = TrackingSyncFile.decode(firstUpload);
+    expect(normalized.bindings.single.remoteId, 'live-match');
+    expect(normalized.tombstones, isEmpty);
+    expect(GStorage.trackingBindings.get(key)?.remoteId, 'live-match');
+    expect(GStorage.trackingTombstones.containsKey(key), isFalse);
+
+    await webDav.syncTracking();
+
+    expect(client.files[path], firstUpload);
+    final secondUpload = TrackingSyncFile.decode(client.files[path]!);
+    expect(secondUpload.bindings.length, 1);
+    expect(secondUpload.tombstones, isEmpty);
   });
 
   test('malformed and failed tracking downloads are never uploaded', () async {

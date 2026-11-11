@@ -131,3 +131,30 @@ worktree contains the implementation commits. No device or real tracker
 account was used. The suite still prints logger file-write fallback messages
 in history tests where Flutter's `ServicesBinding` is not initialized; these
 tests pass.
+
+## Post-review fix (against edb4abf4)
+
+The independent review is preserved verbatim, followed by the lead's
+post-review disposition, in
+[`docs/reviews/tracking-sync-verification.md`](reviews/tracking-sync-verification.md).
+Its verdict applies to `edb4abf4dedd84ab3955a6c8c740beec1840aaa8`; it has not yet
+reviewed the changes below.
+
+F1 is fixed in the ninth local slice: the pure merger resolves a same-side
+binding/tombstone pair by timestamp, preferring the tombstone on an equal-time
+same-side tie. Equal timestamps across local and remote still keep local.
+Remote JSON decoding remains strict and rejects duplicate keys. New tests first
+failed with `ArgumentError` on both the pure merger and real local Hive/WebDAV
+path. Green evidence: `tracking_sync_merger_test.dart` exited 0 with 13 tests;
+the fake WebDAV local-box normalization/idempotence test exited 0 with 1 test;
+the badge-after-uncollect test exited 0 with 1 test. The combined merger,
+WebDAV and tracking UI run exited 0 with 39 tests. The collection controller
+integration stays on the direct controller test seam because local collection
+controls no longer belong to the tracker sheet.
+
+F2/F3/F7 limits, strict malformed-remote handling, and the inferred F4
+simultaneous-edit race are documented in `docs/design/tracking.md`. On the
+ninth-slice source, plain `mise exec -- flutter analyze` exited 0 with no issues;
+full `mise exec -- flutter test` exited 0 with 318 tests passed. After the ninth
+local commit, hold the source for DeepSeek's focused recheck. No account,
+device or remote service was used.

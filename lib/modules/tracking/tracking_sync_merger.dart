@@ -43,7 +43,20 @@ class TrackingSyncMerger {
     final binding = file.bindings.where((value) => value.key == key);
     final tombstone = file.tombstones.where((value) => value.key == key);
     if (binding.isNotEmpty && tombstone.isNotEmpty) {
-      throw ArgumentError('Tracking key has both binding and tombstone: $key');
+      final bindingValue = binding.first;
+      final tombstoneValue = tombstone.first;
+      final bindingTimestamp =
+          bindingValue.updatedAt?.millisecondsSinceEpoch ?? 0;
+      // A same-device pair can result from an interrupted Hive write. Prefer
+      // deletion on equal timestamps as conservative crash recovery; equal
+      // timestamps between devices still keep local in merge().
+      if (tombstoneValue.deletedAt >= bindingTimestamp) {
+        return _Candidate(
+          timestamp: tombstoneValue.deletedAt,
+          tombstone: tombstoneValue,
+        );
+      }
+      return _Candidate(timestamp: bindingTimestamp, binding: bindingValue);
     }
     if (binding.isNotEmpty) {
       final value = binding.first;

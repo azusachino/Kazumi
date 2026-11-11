@@ -24,6 +24,12 @@ TrackingSyncFile file({
   bangumiExcluded: excluded,
 );
 
+void expectSingleCandidate(TrackingSyncFile value) {
+  expect(value.bindings.length + value.tombstones.length, 1);
+  final decoded = TrackingSyncFile.decode(value.encode());
+  expect(decoded.bindings.length + decoded.tombstones.length, 1);
+}
+
 void main() {
   final cases =
       <
@@ -97,6 +103,74 @@ void main() {
       expect(merged.tombstones.isNotEmpty, testCase.deleted);
     });
   }
+
+  test('newer same-side binding beats an older tombstone', () {
+    final merged = TrackingSyncMerger.merge(
+      file(
+        bindings: [binding('live', 20)],
+        tombstones: [TrackingTombstone(key: '1:anilist', deletedAt: 10)],
+      ),
+      file(),
+    );
+
+    expect(merged.bindings.single.remoteId, 'live');
+    expect(merged.tombstones, isEmpty);
+    expectSingleCandidate(merged);
+  });
+
+  test('newer same-side tombstone beats an older binding', () {
+    final merged = TrackingSyncMerger.merge(
+      file(
+        bindings: [binding('stale', 10)],
+        tombstones: [TrackingTombstone(key: '1:anilist', deletedAt: 20)],
+      ),
+      file(),
+    );
+
+    expect(merged.bindings, isEmpty);
+    expect(merged.tombstones.single.deletedAt, 20);
+    expectSingleCandidate(merged);
+  });
+
+  test('same-side equal timestamps conservatively prefer deletion', () {
+    final merged = TrackingSyncMerger.merge(
+      file(
+        bindings: [binding('same-time', 20)],
+        tombstones: [TrackingTombstone(key: '1:anilist', deletedAt: 20)],
+      ),
+      file(),
+    );
+
+    expect(merged.bindings, isEmpty);
+    expect(merged.tombstones.single.deletedAt, 20);
+    expectSingleCandidate(merged);
+  });
+
+  test('remote constructor candidate also resolves by same-side timestamp', () {
+    final merged = TrackingSyncMerger.merge(
+      file(),
+      file(
+        bindings: [binding('remote-live', 20)],
+        tombstones: [TrackingTombstone(key: '1:anilist', deletedAt: 10)],
+      ),
+    );
+
+    expect(merged.bindings.single.remoteId, 'remote-live');
+    expect(merged.tombstones, isEmpty);
+    expectSingleCandidate(merged);
+  });
+
+  test('remote decoding still rejects a binding and tombstone for one key', () {
+    final malformed = file(
+      bindings: [binding('remote-live', 20)],
+      tombstones: [TrackingTombstone(key: '1:anilist', deletedAt: 10)],
+    );
+
+    expect(
+      () => TrackingSyncFile.decode(malformed.encode()),
+      throwsFormatException,
+    );
+  });
 
   test(
     'tracking file round-trips allowlisted fields and omit sync secrets',

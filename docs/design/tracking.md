@@ -72,6 +72,22 @@ title/cover snapshot.
 - Binding sync excludes tokens and the per-device outbox; the remote tracker
   lists are untouched by local binding removal.
 
+### Sync limits
+
+- Exclusions sync as a union, so a later sync can restore an exclusion from
+  another device and undo a local `startTracking` until that device clears it.
+- Startup backfill skips while signed out and does not rerun on sign-in. Existing
+  collected rows are backfilled on the next app start or a later collection
+  status/watch event.
+- Deletion tombstones are retained without pruning so older devices cannot
+  resurrect removed bindings.
+- An interrupted local bind/unbind can leave both a binding and tombstone. Sync
+  chooses the newer timestamp and prefers deletion on a same-device tie. Remote
+  JSON still rejects duplicate candidates for one key and is not uploaded.
+- A manual AniList edit during an in-flight WebDAV apply can race with that
+  apply. This is an inferred, narrow follow-up risk; no concurrency change is
+  made here.
+
 ### Episode numbering
 
 Plugin episodes are playlist positions, not Bangumi episode IDs. Progress

@@ -96,9 +96,14 @@ Files: new `lib/modules/tracking/tracking_sync_merger.dart` and
    `generation`, `lastRemoteProgress`, `lastSyncAt`, outbox.
 2. `merge(local, remote)` → `{bindings, tombstones, excluded}`, per key:
    newest of {local binding, remote binding, local tombstone, remote
-   tombstone} by timestamp wins (null `updatedAt` = epoch 0; tie → keep local).
-   Excluded ids: union, minus any id whose Bangumi binding is newer than the
-   exclusion is not tracked (keep it simple: union only).
+   tombstone} by timestamp wins (null `updatedAt` = epoch 0; tie between local
+   and remote candidates → keep local). If one side's in-memory snapshot contains
+   both a binding and tombstone from an interrupted Hive write, choose that
+   side's newer timestamp first; a same-side tie prefers deletion for
+   conservative crash recovery. Remote JSON decoding remains strict and rejects
+   duplicate candidates. Excluded ids: union, minus any id whose Bangumi
+   binding is newer than the exclusion is not tracked (keep it simple: union
+   only).
 3. Tests (table-driven): live vs older live; live vs newer live (rebind to a
    different remoteId); tombstone vs older live → deleted; tombstone vs newer
    live → live; both absent; tie; null updatedAt; serialization round trip
@@ -157,7 +162,8 @@ was used.
 | 5 | `c684f4fc95463df88788a276202dd2430448a714` | Focused WebDAV test exited 1 because `WebDav.syncTracking` was not defined. | `test/webdav_service_test.dart` exited 0: 12 tests passed, including token-free export, signed-out import, unchanged generations, opt-out ordering, stale outbox, tombstone/rebind convergence, and malformed/failed download no-upload behavior. |
 | 6 | `485bd39d6e6a57608b5a066b3c2e9c6af85ccf13` | skip: documentation/evidence-only slice; behavior regressions are covered by slices 1–5. | Full test exited 0: 311 tests passed. Plain `flutter analyze` exited 1 with 17 info findings; exact transcript is in the workstation scratch log recorded in the handoff. |
 | 7 | `86f10536d41541bc49898fcc92c7decbd47a410a` | Focused sheet regression exited 1 because it still rendered the `收藏` heading. | `mise exec -- flutter test test/tracking/tracking_ui_test.dart` exited 0: 13 tests passed; covers absence of local picker/chips, Bangumi and AniList status controls writing only to their respective outbox rows, and collection controller → binding/outbox/badge with local-only delete. |
-| 8 | This cleanup/evidence commit (full hash in closeout) | Authorized gate repair, not a behavior TDD slice. | Affected tests exited 0: 44 passed. Plain `mise exec -- flutter analyze` exited 0: no issues found. Full `mise exec -- flutter test` exited 0: 312 tests passed. |
+| 8 | `edb4abf4dedd84ab3955a6c8c740beec1840aaa8` | Authorized gate repair, not a behavior TDD slice. | Affected tests exited 0: 44 passed. Plain `mise exec -- flutter analyze` exited 0: no issues found. Full `mise exec -- flutter test` exited 0: 312 tests passed. |
+| 9 | This fix/evidence commit (hash in closeout) | Merger tests exited 1 on binding+tombstone pairs with `ArgumentError`; the fake WebDAV crash-window test exited 1 at `TrackingSyncMerger.merge`. | Merger tests exited 0: 13 passed, including same-side timestamp ordering, remote constructor candidate, strict decode rejection and single-candidate roundtrip. Fake WebDAV local-box integration exited 0: 1 test; normalized second sync is byte-stable. Badge-after-uncollect UI test exited 0: 1 test. Combined merger/WebDAV/UI run exited 0: 39 tests passed. Plain `mise exec -- flutter analyze` exited 0: no issues found. Full `mise exec -- flutter test` exited 0: 318 tests passed. |
 
 Slice 8 was separately authorized after the plain analyzer reported 17
 info-level findings in untouched files. The cleanup changes only those

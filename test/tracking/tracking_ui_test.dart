@@ -498,6 +498,7 @@ void main() {
     expect(GStorage.collectibles.get(123), isNull);
     expect(GStorage.trackingBindings.get('123:bangumi'), isNotNull);
     expect(GStorage.trackingOutbox.get('123:bangumi')?.status, TrackStatus.current);
+    expect(find.text('未追 · 1'), findsOneWidget);
     Navigator.of(tester.element(find.byType(TrackingSheet))).pop();
     await tester.pumpAndSettle();
     expect(closed, 1);

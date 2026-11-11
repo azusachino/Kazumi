@@ -714,10 +714,12 @@ void main() {
     expect(find.text('想看'), findsOneWidget);
     expect(find.text('3 / 12'), findsOneWidget);
     expect(find.text('读取中…'), findsNothing);
+    expect(find.text('正在刷新追踪状态…'), findsOneWidget);
     gate.complete();
     await tester.pumpAndSettle();
     expect(find.text('在看'), findsOneWidget);
     expect(find.text('4 / 12'), findsOneWidget);
+    expect(find.text('正在刷新追踪状态…'), findsNothing);
     expect(_bangumiTracker.reads, 1);
     await tester.pumpWidget(const SizedBox());
   });

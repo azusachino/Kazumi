@@ -20,6 +20,8 @@ void main() {
     expect(cache.get(binding)?.entry?.status, TrackStatus.planning);
     expect(cache.get(binding)?.isFresh(at.add(const Duration(minutes: 1))), isTrue);
     expect(cache.get(binding)?.isFresh(at.add(const Duration(minutes: 6))), isFalse);
+    // A timestamp from the future (clock rollback) is not fresh either.
+    expect(cache.get(binding)?.isFresh(at.subtract(const Duration(minutes: 1))), isFalse);
     final rebound = TrackingBinding(
       subjectId: 1, trackerId: TrackerId.bangumi, remoteId: '2', generation: 'b',
     );

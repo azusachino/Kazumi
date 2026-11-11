@@ -19,7 +19,8 @@ class TrackingEntrySnapshot {
   final RemoteEntry? entry;
   final DateTime fetchedAt;
 
-  bool isFresh(DateTime now) => now.difference(fetchedAt) < freshness;
+  bool isFresh(DateTime now) =>
+      !now.isBefore(fetchedAt) && now.difference(fetchedAt) < freshness;
 
   Map<String, Object?> toJson() => {
     'entry': entry == null

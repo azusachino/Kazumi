@@ -97,7 +97,14 @@ class _TrackingSheetState extends State<TrackingSheet> {
         // Always keyed to the account captured before the read, so a response
         // that crosses a sign-in cannot populate the new account.
         await cache.put(binding, entry, DateTime.now(), scope: scope);
-        if (scope != cache.scopeFor(binding.trackerId)) return;
+        // Persisting the row can outlive this sheet or its binding.
+        if (!mounted ||
+            revision != _revision ||
+            scope != cache.scopeFor(binding.trackerId) ||
+            GStorage.trackingBindings.get(binding.key)?.generation !=
+                binding.generation) {
+          return;
+        }
         _loaded.add(binding.key);
         _readErrors.remove(binding.key);
         setState(() {});
@@ -340,6 +347,8 @@ class _TrackingSheetState extends State<TrackingSheet> {
     // A remembered null entry means the tracker has nothing for this subject;
     // a missing snapshot means this device has not read it yet.
     final known = snapshot != null || _loaded.contains(key);
+    final stale =
+        snapshot != null && !snapshot.isFresh(DateTime.now());
     final entry = snapshot?.entry;
     final queued = GStorage.trackingOutbox.get(key);
     final pending = queued?.bindingGeneration == binding.generation &&
@@ -463,6 +472,13 @@ class _TrackingSheetState extends State<TrackingSheet> {
             ),
           ),
         ),
+        if (stale && !_readErrors.contains(key) && _reading.contains(key))
+          Text(
+            '正在刷新追踪状态…',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
         if (_readErrors.contains(key))
           Row(
             children: [

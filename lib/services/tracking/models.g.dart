@@ -28,6 +28,7 @@ class TrackingBindingAdapter extends TypeAdapter<TrackingBinding> {
       title: fields[8] as String?,
       cover: fields[9] as String?,
       total: (fields[10] as num?)?.toInt(),
+      updatedAt: fields[12] as DateTime?,
       generation: fields[11] as String?,
     );
   }
@@ -35,7 +36,7 @@ class TrackingBindingAdapter extends TypeAdapter<TrackingBinding> {
   @override
   void write(BinaryWriter writer, TrackingBinding obj) {
     writer
-      ..writeByte(12)
+      ..writeByte(13)
       ..writeByte(0)
       ..write(obj.subjectId)
       ..writeByte(1)
@@ -59,7 +60,9 @@ class TrackingBindingAdapter extends TypeAdapter<TrackingBinding> {
       ..writeByte(10)
       ..write(obj.total)
       ..writeByte(11)
-      ..write(obj.generation);
+      ..write(obj.generation)
+      ..writeByte(12)
+      ..write(obj.updatedAt);
   }
 
   @override

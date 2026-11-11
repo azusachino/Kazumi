@@ -38,6 +38,7 @@ class GStorage {
   static late Box<SearchHistory> searchHistory;
   static late Box<DownloadRecord> downloads;
   static late Box<TrackingBinding> trackingBindings;
+  static late Box<int> trackingTombstones;
   static late Box<OutboxEntry> trackingOutbox;
   static late TrackingSync trackingSync;
   static late BangumiAccount bangumiAccount;
@@ -188,6 +189,7 @@ class GStorage {
     searchHistory = await _openBoxSafe<SearchHistory>('searchHistory');
     downloads = await _openBoxSafe<DownloadRecord>('downloads');
     trackingBindings = await _openBoxSafe<TrackingBinding>('trackingBindings');
+    trackingTombstones = await _openBoxSafe<int>('trackingTombstones');
     trackingOutbox = await _openBoxSafe<OutboxEntry>('trackingOutbox');
     final tracker = BangumiTracker();
     final anilistTracker = AniListTracker();
@@ -210,8 +212,18 @@ class GStorage {
       tokenProvider: (id) => id == TrackerId.bangumi
           ? bangumiAccount.validToken() : anilistAccount.validToken(),
     );
-    bangumiBindingManager = BangumiBindingManager(bangumiAccount, bindings, trackingSync);
-    anilistBindingManager = AniListBindingManager(anilistAccount, bindings, trackingSync);
+    bangumiBindingManager = BangumiBindingManager(
+      bangumiAccount,
+      bindings,
+      trackingSync,
+      tombstones: trackingTombstones,
+    );
+    anilistBindingManager = AniListBindingManager(
+      anilistAccount,
+      bindings,
+      trackingSync,
+      tombstones: trackingTombstones,
+    );
     if (Platform.isIOS) {
       await rebaseIosDownloadPaths(downloads);
     }

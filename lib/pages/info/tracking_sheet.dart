@@ -21,8 +21,9 @@ Future<void> showTrackingSheet(BuildContext context, BangumiItem item) =>
     );
 
 class TrackingSheet extends StatefulWidget {
-  const TrackingSheet({super.key, required this.item});
+  const TrackingSheet({super.key, required this.item, this.onRemoveBinding});
   final BangumiItem item;
+  final Future<void> Function(TrackingBinding binding)? onRemoveBinding;
 
   @override
   State<TrackingSheet> createState() => _TrackingSheetState();
@@ -134,7 +135,10 @@ class _TrackingSheetState extends State<TrackingSheet> {
       ),
     );
     if (remove != true) return;
-    if (binding.trackerId == TrackerId.bangumi) {
+    final onRemoveBinding = widget.onRemoveBinding;
+    if (onRemoveBinding != null) {
+      await onRemoveBinding(binding);
+    } else if (binding.trackerId == TrackerId.bangumi) {
       await GStorage.bangumiBindingManager.stopTracking(binding.subjectId);
     } else {
       await GStorage.anilistBindingManager.unbind(binding.subjectId);
@@ -161,6 +165,7 @@ class _TrackingSheetState extends State<TrackingSheet> {
         title: binding.title,
         cover: binding.cover,
         total: binding.total,
+        updatedAt: DateTime.now(),
         // New generation: writes queued under the old offset are dropped,
         // since progress sent with a wrong offset could never be lowered.
       ),
@@ -408,7 +413,7 @@ class _TrackingSheetState extends State<TrackingSheet> {
             const SizedBox(height: 32, child: VerticalDivider()),
             PopupMenuButton<String>(
               tooltip: '更多操作',
-              onSelected: (action) {
+              onSelected: (action) async {
                 switch (action) {
                   case 'open':
                     _open(binding);
@@ -417,7 +422,7 @@ class _TrackingSheetState extends State<TrackingSheet> {
                   case 'offset':
                     _editOffset(binding);
                   case 'remove':
-                    _remove(binding);
+                    await _remove(binding);
                 }
               },
               itemBuilder: (_) => const [

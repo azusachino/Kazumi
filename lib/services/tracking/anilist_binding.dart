@@ -1,3 +1,4 @@
+import 'package:hive_ce/hive.dart';
 import 'package:kazumi/modules/bangumi/bangumi_item.dart';
 
 import 'anilist_account.dart';
@@ -7,10 +8,14 @@ import 'tracker.dart';
 import 'tracking_sync.dart';
 
 class AniListBindingManager {
-  AniListBindingManager(this.account, this.bindings, this.sync);
+  AniListBindingManager(this.account, this.bindings, this.sync,
+      {required this.tombstones, DateTime Function()? clock})
+      : clock = clock ?? DateTime.now;
   final AniListAccount account;
   final BindingStore bindings;
   final TrackingSync sync;
+  final Box<int> tombstones;
+  final DateTime Function() clock;
 
   Future<void> bind(
     BangumiItem item,
@@ -32,8 +37,10 @@ class AniListBindingManager {
         title: result.title,
         cover: result.cover,
         total: result.episodes,
+        updatedAt: clock(),
       ),
     );
+    await tombstones.delete(key);
     if (remote == null) {
       await sync.enqueue(
         item.id,
@@ -43,8 +50,11 @@ class AniListBindingManager {
     }
   }
 
-  Future<void> unbind(int subjectId) =>
-      bindings.delete('$subjectId:${TrackerId.anilist.name}');
+  Future<void> unbind(int subjectId) async {
+    final key = '$subjectId:${TrackerId.anilist.name}';
+    await tombstones.put(key, clock().millisecondsSinceEpoch);
+    await bindings.delete(key);
+  }
 
   Future<void> rebind(
     BangumiItem item,

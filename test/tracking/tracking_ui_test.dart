@@ -141,11 +141,13 @@ Future<void> _setup() async {
     GStorage.bangumiAccount,
     _bindings,
     GStorage.trackingSync,
+    tombstones: GStorage.trackingTombstones,
   );
   GStorage.anilistBindingManager = AniListBindingManager(
     GStorage.anilistAccount,
     _bindings,
     GStorage.trackingSync,
+    tombstones: GStorage.trackingTombstones,
   );
 }
 
@@ -293,6 +295,7 @@ void main() {
   testWidgets('remove confirmation deletes only the local binding', (
     tester,
   ) async {
+    late Future<void> removing;
     await tester.runAsync(
       () => GStorage.bangumiAccount.signInWithToken('token'),
     );
@@ -308,7 +311,14 @@ void main() {
     );
     await tester.pumpWidget(
       MaterialApp(
-        home: Material(child: TrackingSheet(item: _item())),
+        home: Material(
+          child: TrackingSheet(
+            item: _item(),
+            onRemoveBinding: (binding) => removing = tester.runAsync(
+              () => GStorage.bangumiBindingManager.stopTracking(binding.subjectId),
+            ),
+          ),
+        ),
       ),
     );
     await tester.tap(find.byTooltip('更多操作'));
@@ -317,12 +327,15 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.textContaining('远端追番列表不会改变'), findsOneWidget);
     await tester.tap(find.text('移除').last);
-    await tester.pump();
-    await tester.runAsync(
-      () => Future<void>.delayed(const Duration(milliseconds: 50)),
-    );
-    await tester.pump();
+    await tester.pumpAndSettle();
+    await removing;
+    expect(GStorage.trackingTombstones.get('123:bangumi'), isNotNull);
     expect(GStorage.trackingBindings.get('123:bangumi'), isNull);
+    expect(
+      _settings.get(SettingsKeys.bangumiExcludedSubjectIds.name),
+      contains('123'),
+    );
+    expect(GStorage.trackingOutbox.get('123:bangumi'), isNull);
     expect(_bangumiTracker.saves, 0);
     await tester.pumpWidget(const SizedBox());
   });

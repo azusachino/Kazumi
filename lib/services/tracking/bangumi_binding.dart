@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:hive_ce/hive.dart';
 import 'package:kazumi/modules/bangumi/bangumi_item.dart';
 import 'package:kazumi/modules/collect/collect_type.dart';
 import 'package:kazumi/services/storage/settings_keys.dart';
@@ -11,10 +12,14 @@ import 'tracker.dart';
 import 'tracking_sync.dart';
 
 class BangumiBindingManager {
-  BangumiBindingManager(this.account, this.bindings, this.sync);
+  BangumiBindingManager(this.account, this.bindings, this.sync,
+      {required this.tombstones, DateTime Function()? clock})
+      : clock = clock ?? DateTime.now;
   final BangumiAccount account;
   final BindingStore bindings;
   final TrackingSync sync;
+  final Box<int> tombstones;
+  final DateTime Function() clock;
   Future<void> _queue = Future.value();
 
   Future<void> _queued(Future<void> Function() action) {
@@ -54,6 +59,7 @@ class BangumiBindingManager {
         remoteId: id,
         title: item.name.trim().isEmpty ? item.nameCn : item.name,
         cover: item.images['medium'],
+        updatedAt: clock(),
       ),
     );
     return true;
@@ -83,7 +89,9 @@ class BangumiBindingManager {
         ids,
       );
     }
-    await bindings.delete('$subjectId:${TrackerId.bangumi.name}');
+    final key = '$subjectId:${TrackerId.bangumi.name}';
+    await tombstones.put(key, clock().millisecondsSinceEpoch);
+    await bindings.delete(key);
   });
 
   Future<void> startTracking(BangumiItem item) => _queued(() async {
@@ -92,6 +100,7 @@ class BangumiBindingManager {
       SettingsKeys.bangumiExcludedSubjectIds.name,
       ids,
     );
+    await tombstones.delete('${item.id}:${TrackerId.bangumi.name}');
     await _ensureBinding(item);
   });
 

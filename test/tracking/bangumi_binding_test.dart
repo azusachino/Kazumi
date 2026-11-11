@@ -17,6 +17,7 @@ void main() {
     final dir = await Directory.systemTemp.createTemp('kazumi-binding-test');
     Hive.init(dir.path);
     final settings = await Hive.openBox<dynamic>('settings');
+    final tombstones = await Hive.openBox<int>('trackingTombstones');
     final tracker = FakeTracker(TrackerId.bangumi);
     final account = BangumiAccount(settings: settings, tracker: tracker);
     final bindings = MemoryBindings();
@@ -27,7 +28,14 @@ void main() {
       trackers: [],
       tokenProvider: (_) => account.validToken(),
     );
-    final manager = BangumiBindingManager(account, bindings, sync);
+    final now = DateTime.utc(2026, 11, 11);
+    final manager = BangumiBindingManager(
+      account,
+      bindings,
+      sync,
+      tombstones: tombstones,
+      clock: () => now,
+    );
     final item = BangumiItem(
       id: 123,
       type: 2,
@@ -54,6 +62,7 @@ void main() {
     final binding = bindings.rows['123:bangumi']!;
     expect(binding.remoteId, '123');
     expect(binding.title, 'show');
+    expect(binding.updatedAt, now);
     expect(outbox.rows['123:bangumi']!.progress, 2);
     await manager.watched(item, 3);
     expect(bindings.rows['123:bangumi']!.generation, binding.generation);
@@ -73,6 +82,7 @@ void main() {
 
     await manager.stopTracking(item.id);
     expect(bindings.rows.containsKey('123:bangumi'), isFalse);
+    expect(tombstones.get('123:bangumi'), now.millisecondsSinceEpoch);
     expect(
       settings.get(SettingsKeys.bangumiExcludedSubjectIds.name),
       contains('123'),
@@ -81,6 +91,8 @@ void main() {
     expect(bindings.rows.containsKey('123:bangumi'), isFalse);
     await manager.startTracking(item);
     expect(bindings.rows['123:bangumi']?.remoteId, '123');
+    expect(bindings.rows['123:bangumi']?.updatedAt, now);
+    expect(tombstones.containsKey('123:bangumi'), isFalse);
     expect(
       settings.get(SettingsKeys.bangumiExcludedSubjectIds.name),
       isNot(contains('123')),

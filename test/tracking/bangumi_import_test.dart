@@ -96,7 +96,12 @@ void main() {
     final sync = TrackingSync(bindings: bindings, outbox: outbox,
         trackers: [tracker], tokenProvider: (_) => account.validToken(),
         schedule: (_, _) => () {});
-    GStorage.bangumiBindingManager = BangumiBindingManager(account, bindings, sync);
+    GStorage.bangumiBindingManager = BangumiBindingManager(
+      account,
+      bindings,
+      sync,
+      tombstones: await Hive.openBox<int>('trackingTombstones'),
+    );
     final repository = MemoryCollect();
     final item = BangumiItem.fromJson({
       'id': 5, 'name': 'show', 'images': <String, String>{},
@@ -141,7 +146,12 @@ void main() {
       tokenProvider: (_) async => 'token',
       schedule: (_, _) => () {},
     );
-    final manager = BangumiBindingManager(account, bindings, sync);
+    final manager = BangumiBindingManager(
+      account,
+      bindings,
+      sync,
+      tombstones: await Hive.openBox<int>('trackingTombstones'),
+    );
     final repository = MemoryCollect();
     final original = BangumiItem.fromJson({
       'id': 1, 'type': 2, 'name': 'original', 'images': <String, String>{},

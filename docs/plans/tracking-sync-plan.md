@@ -152,6 +152,14 @@ was used.
 | --- | --- | --- | --- |
 | 1 | pending | `mise exec -- flutter test test/tracking/bangumi_import_test.dart` exited 1: compile error, `BangumiImport` had no `ensureBinding` parameter. | Same focused command exited 0: 4 tests passed. |
 | 2 | pending | Focused WebDAV backfill test exited 1: expected binding `41:bangumi`, actual binding set was empty. | `mise exec -- flutter test test/webdav_service_test.dart --plain-name 'collect sync backfills Bangumi bindings idempotently without outbox writes'` exited 0: 1 test passed. |
+| 3 | pending | `mise exec -- flutter test test/tracking/anilist_binding_test.dart --plain-name 'binding timestamps and tombstones follow local changes'` exited 1: manager clock/tombstone arguments and `TrackingBinding.updatedAt` were absent; the initial test also missed its `models.dart` import, corrected before green. | Codegen exited 0; adapter diff adds only field 12 (typeId remains 9). The affected tracking group exited 0: 20 tests passed; after the final UI assertion additions, the removal regression exited 0: 1 test passed with tombstone, binding deletion, exclusion, empty outbox and zero tracker saves. |
+
+The removal widget regression supplies `onRemoveBinding` to run the same
+production manager inside `tester.runAsync`; its Hive completion is awaited by
+the test. Without this seam, Hive's async box write yielded from the widget's
+FakeAsync zone before the following binding delete could complete. The test
+triggers removal through the confirmation UI and asserts tombstone, local
+binding deletion, exclusion, empty outbox and zero tracker saves.
 
 Device verification: skipped per explicit task scope; no device or real tracker
 account was accessed.

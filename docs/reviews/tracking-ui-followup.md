@@ -60,3 +60,66 @@ not a replacement of the overview/comments/character content.
 Physical verification will use a new local `2.4.3-haru.6` build on the pad,
 without confirming changes to tracker status, progress or score. Screenshots
 are temporary workstation scratch; results will be recorded here after install.
+
+## Drawer cache and compact picker (haru.7)
+
+Owner report after haru.6: the drawer lagged while fetching Bangumi and had no
+local status cache, and the episode/score picker expanded across the whole
+tablet. Diagnosis: the drawer read every tracker on each open and cleared its
+in-memory state on every binding/outbox notification, so a slow request left a
+blank row; the number dialog used `double.maxFinite`.
+
+### Changes
+
+- Remember each tracker entry on this device in a Hive `Box<String>`
+  (`trackingEntryCache`): optional `RemoteEntry` plus `fetchedAt`, keyed by
+  account username (never a token), subject/tracker, remote id and binding
+  generation. A remembered null entry is distinct from a cache miss; corrupt
+  rows read as a miss.
+- Fresh for five minutes: a fresh snapshot renders synchronously with no
+  network read; a stale one stays visible while the background refresh runs and
+  carries a plain `正在刷新追踪状态…` line. `刷新状态` and `重新读取` force a read.
+  A future `fetchedAt` counts as stale.
+- `TrackingSync` refreshes the snapshot from a successful remote read/write
+  before it removes the outbox row, so clearing a pending edit never reverts
+  the row to older state. Account scope is captured before the read and
+  re-checked after the cache write, together with `mounted`, revision and
+  binding generation.
+- The cache is excluded from the WebDAV tracking payload: it is display state,
+  not account state.
+- The number picker is constrained to a Material dialog width (`min(320,
+  screen - 120)`), keeping the selected highlight and semantics.
+
+### Verification
+
+- Expected red: `flutter test test/tracking/tracking_entry_cache_test.dart`
+  exited 1, `No such file ... tracking_entry_cache.dart`; after the UI/sync
+  tests were added, `flutter test test/tracking/tracking_sync_test.dart
+  test/tracking/tracking_ui_test.dart` exited 1 with two load failures
+  (`Setter/Member not found: GStorage.trackingEntryCache`).
+- Focused cache + sync + UI: exit 0, 45 passed (cache 3, sync 20, UI 21).
+  Covers account/generation isolation, null-entry vs miss, corrupt persisted
+  rows, no duplicate read on reopen, stale row visible during a gated refresh,
+  opt-out, the compact dialog, and the sync cache refresh before row removal.
+- After the review guards and stale line: cache + UI exit 0, 24 passed; plain
+  `flutter analyze` exit 0, no issues; full `flutter test` exit 0, 330 passed.
+- Source commits: eec75394 (cache, picker, tests), d065464f (guard, stale
+  line, future-clock check).
+
+### Device result (pad, 2f11f2ca)
+
+- `2.4.3-haru.7` built from eec75394 (versionCode 20406), 33.5 MB, APK SHA-256
+  `a77f4a1665bb9719344398808d3c3a8740c920eeac53f41796ba892432d44334`,
+  signer SHA-256 `7b51900552bbc088391e28fb243914402e5fe258c33f1bed2116409dcb61c4a9`
+  (matched the installed certificate before installing). `install -r`:
+  Success; `firstInstallTime` stayed 2026-11-10 21:24:19, so app data was kept.
+- Drawer for `追放されたチート付与魔術師…` shows both signed-in trackers with
+  logos, `想看`, `0 / 12` and `0`, no blank or `读取中…` row after the first
+  cold read. The number picker is a compact centered dialog with the selected
+  value highlighted. Only 取消/Back were used; no remote status, progress or
+  score was changed.
+- Limit: the installed haru.7 predates d065464f, so the stale-refresh line and
+  the post-persist guards are covered by tests, not by this install. The next
+  installed build should be `2.4.3-haru.8` (20407). The phone remains haru.5.
+- The cache is per device and per account; the first open after install is a
+  cold read, and the cache does not sync over WebDAV.

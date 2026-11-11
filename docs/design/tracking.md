@@ -322,6 +322,30 @@ The episode/score wheel highlights the center selection and exposes its selected
 value to assistive technology before confirmation. Opening a drawer or cancelling
 a picker does not enqueue a remote change.
 
+### Local entry snapshots
+
+The drawer must show what this device last read without waiting on a tracker,
+so a slow Bangumi request no longer leaves a row blank or flickering.
+
+- Remote entries are remembered in a device-local Hive `Box<String>`
+  (`trackingEntryCache`) as JSON: the optional `RemoteEntry` plus `fetchedAt`.
+  A remembered null entry means "the tracker has no entry", which is distinct
+  from a cache miss.
+- The key is account username (never a token) + subject/tracker + remote id +
+  binding generation. Signing into another account or rebinding cannot surface
+  another account's or another subject's snapshot.
+- Snapshots are fresh for five minutes. A fresh snapshot renders immediately
+  without a network read; a stale one stays visible while a background read
+  runs, with a plain `正在刷新追踪状态…` line, and `刷新状态`/`重新读取` force a
+  read. `fetchedAt` in the future (clock rollback) is treated as stale.
+- A corrupt persisted row is a miss. A cache write failure is logged and never
+  turns a successful remote read or write into a retry.
+- `TrackingSync` refreshes the snapshot from a successful read or write before
+  it deletes the outbox row, so clearing a pending edit never reverts the UI to
+  older state. The account scope is captured before each network read.
+- The cache is display state, not account state: it is excluded from the WebDAV
+  `tracking.json` payload and never synced.
+
 Build, verification and upstream-sync notes live in the owner's workstation
 KB (`docs/projects/kazumi.md`), not in this repository.
 

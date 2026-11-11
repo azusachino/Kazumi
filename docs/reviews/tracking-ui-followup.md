@@ -149,3 +149,36 @@ blank row; the number dialog used `double.maxFinite`.
   and preserved `firstInstallTime=2026-11-10 20:21:19`. The signing certificate
   matched the previously verified installed fork. Both devices now have haru.8;
   phone UI acceptance remains with the owner.
+
+## Default status on an explicit add (haru.9)
+
+Owner report: after tapping `添加追踪`, the status cell read `状态` instead of the
+expected default `想看`.
+
+Measured cause: `BangumiBindingManager.startTracking` cleared the opt-out and
+tombstone and created the binding, but never enqueued a status. Bangumi then had
+no collection entry, `readEntry` returned null, and the sheet fell back to its
+`状态` placeholder. `AniListBindingManager.bind` already enqueued
+`TrackStatus.planning` when the remote entry was absent, so the two services
+disagreed.
+
+Fix: `startTracking` remembers whether the binding already existed and, only for
+a newly created one, enqueues `TrackStatus.planning` on that tracker. An
+already-bound subject keeps its tracker status, and implicit creation (Bangumi
+import, WebDAV apply, startup backfill) still enqueues nothing.
+
+Verification:
+
+- New unit test `startTracking seeds 想看 only for a newly created binding`
+  covers: one planning write on add; a second add writes nothing; an
+  already-bound subject keeps `在看`; implicit `ensureBangumiBindings` creates a
+  binding with no outbox row and no tracker write.
+- A widget-level duplicate of this assertion was written and dropped: it waited
+  on the fake tracker's save from inside the widget-test zone, where the
+  enqueue → drain chain parks on Hive awaits, so it hung instead of measuring
+  anything. The unit test exercises the same production path deterministically,
+  and the existing sheet test already proves a pending planning row renders as
+  `想看` rather than the placeholder.
+- Plain `mise exec -- flutter analyze` exit 0, no issues. Full
+  `mise exec -- flutter test` exit 0, 331 passed.
+- Self-review only; no independent reviewer covered this commit.

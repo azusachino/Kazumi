@@ -322,6 +322,14 @@ The episode/score wheel highlights the center selection and exposes its selected
 value to assistive technology before confirmation. Opening a drawer or cancelling
 a picker does not enqueue a remote change.
 
+An explicit add owes a status. Tapping `添加追踪` on a tracker creates the local
+binding and, only when that binding did not already exist, enqueues
+`TrackStatus.planning` (`想看`) so the tracker gains a real entry instead of the
+drawer falling back to the `状态` placeholder. An already-bound subject keeps
+the status the tracker already has, and implicit binding creation — Bangumi
+import, WebDAV apply and the startup backfill — still enqueues nothing, because
+those paths describe state the remote already holds.
+
 ### Local entry snapshots
 
 The drawer must show what this device last read without waiting on a tracker,

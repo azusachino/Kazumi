@@ -96,6 +96,7 @@ class KazumiLogPrinter extends LogPrinter {
 class KazumiLogOutput extends LogOutput {
   static final Lock _logLock = Lock();
   static String? _logFilePath;
+  final ConsoleOutput _consoleOutput = ConsoleOutput();
 
   static Future<String> _getLogFilePath() async {
     if (_logFilePath != null) return _logFilePath!;
@@ -112,9 +113,7 @@ class KazumiLogOutput extends LogOutput {
 
   @override
   void output(OutputEvent event) {
-    for (var line in event.lines) {
-      print(line);
-    }
+    _consoleOutput.output(event);
 
     // Write to file if: warning/error/fatal OR forceLog is enabled
     final forceLog = Zone.current[_forceLogKey] as bool? ?? false;
@@ -140,7 +139,7 @@ class KazumiLogOutput extends LogOutput {
           mode: FileMode.writeOnlyAppend,
         );
       } catch (e) {
-        print('Failed to write log to file: ${_singleLineLogText(e)}');
+        stderr.writeln('Failed to write log to file: ${_singleLineLogText(e)}');
       }
     });
   }
@@ -247,7 +246,7 @@ Future<bool> clearLogs() async {
     });
     return true;
   } catch (e) {
-    print('Error clearing file: ${_singleLineLogText(e)}');
+    stderr.writeln('Error clearing file: ${_singleLineLogText(e)}');
     return false;
   }
 }

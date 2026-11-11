@@ -156,8 +156,17 @@ was used.
 | 4 | `8169de29e693222ee882a633f42a200ab5423584` | `tracking_sync_merger_test.dart` exited 1 because both tracking sync modules did not exist. | Same command exited 0: 8 table/round-trip tests passed. |
 | 5 | `c684f4fc95463df88788a276202dd2430448a714` | Focused WebDAV test exited 1 because `WebDav.syncTracking` was not defined. | `test/webdav_service_test.dart` exited 0: 12 tests passed, including token-free export, signed-out import, unchanged generations, opt-out ordering, stale outbox, tombstone/rebind convergence, and malformed/failed download no-upload behavior. |
 | 6 | `485bd39d6e6a57608b5a066b3c2e9c6af85ccf13` | skip: documentation/evidence-only slice; behavior regressions are covered by slices 1–5. | Full test exited 0: 311 tests passed. Plain `flutter analyze` exited 1 with 17 info findings; exact transcript is in the workstation scratch log recorded in the handoff. |
-| 7 | pending | Focused sheet regression exited 1 because it still rendered the `收藏` heading. | `mise exec -- flutter test test/tracking/tracking_ui_test.dart` exited 0: 13 tests passed; covers absence of local picker/chips, Bangumi and AniList status controls writing only to their respective outbox rows, and collection controller → binding/outbox/badge with local-only delete. |
-| 8 | pending | Authorized follow-up, not a behavior TDD slice: no new behavior regression expected. | Pending: resolve the 17 pre-existing info findings in a separate cleanup commit, then rerun plain full analyze and full tests. User/lead authorization came after the slice-6 analyzer run. |
+| 7 | `86f10536d41541bc49898fcc92c7decbd47a410a` | Focused sheet regression exited 1 because it still rendered the `收藏` heading. | `mise exec -- flutter test test/tracking/tracking_ui_test.dart` exited 0: 13 tests passed; covers absence of local picker/chips, Bangumi and AniList status controls writing only to their respective outbox rows, and collection controller → binding/outbox/badge with local-only delete. |
+| 8 | This cleanup/evidence commit (full hash in closeout) | Authorized gate repair, not a behavior TDD slice. | Affected tests exited 0: 44 passed. Plain `mise exec -- flutter analyze` exited 0: no issues found. Full `mise exec -- flutter test` exited 0: 312 tests passed. |
+
+Slice 8 was separately authorized after the plain analyzer reported 17
+info-level findings in untouched files. The cleanup changes only those
+mechanical findings: repeated placeholder parameters become `_`, nullable
+collection elements use `?`, WebView creation messages use
+`KazumiLogger().d`, and `KazumiLogOutput` delegates console emission to the
+existing logger package's `ConsoleOutput`; logger fallback errors use
+`stderr.writeln` to avoid recursive logging. No analyzer configuration,
+dependency or unrelated formatting was changed.
 
 The removal widget regression supplies `onRemoveBinding` to run the same
 production manager inside `tester.runAsync`; its Hive completion is awaited by

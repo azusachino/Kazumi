@@ -115,7 +115,19 @@ Findings were `unnecessary_underscores` at
 `lib/webview/video/impl/video_webview_android_impl.dart:35:11`, and
 `lib/webview/video/impl/video_webview_impl.dart:33:11`.
 
-After this run, the lead authorized a separate eighth local commit to repair
-these mechanical baseline findings without weakening analysis configuration.
-Final analyze and test gates are pending that cleanup and the tracker-only UI
-commit; the task must remain incomplete until plain `flutter analyze` exits 0.
+The lead authorized a separate eighth local commit to repair these
+mechanical findings without weakening analysis configuration. The affected
+suite (`test/async_single_flight_test.dart`, `test/api_rule_engine_test.dart`,
+`test/rule_engine_test.dart`, and `test/plugin_import_parser_test.dart`) exited
+0 with 44 tests passing. Final plain `mise exec -- flutter analyze` exited 0
+with `No issues found!`; full `mise exec -- flutter test` exited 0 with 312
+tests passing. The tracker UI file separately passed all 13 tests.
+
+A focused test command was once started from the shared checkout by mistake.
+Flutter changed only `pubspec.lock`'s `uuid` dependency marker there; that exact
+hunk was restored. The shared checkout has no tracked diff from this incident;
+the untracked `.worktrees/` directory was left untouched. The authorized
+worktree contains the implementation commits. No device or real tracker
+account was used. The suite still prints logger file-write fallback messages
+in history tests where Flutter's `ServicesBinding` is not initialized; these
+tests pass.

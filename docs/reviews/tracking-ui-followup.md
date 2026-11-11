@@ -195,3 +195,40 @@ APK: `adb install -r` exited 0 with `Success`, inspection confirmed
 `2.4.3-haru.9` / `20408`, and its `firstInstallTime=2026-11-10 21:24:19` was
 preserved. Both devices now run haru.9; owner acceptance of the
 default-status behaviour is pending on device.
+
+## Drawer status moves the show in the local library (haru.10)
+
+Owner report: a show set to 在看 in the tracking drawer did not appear under
+追番 > 在看.
+
+Measured cause: the 追番 list reads the local `collectibles` box filtered by
+local `CollectType`. The drawer's status selector only called
+`trackingSync.enqueue`, which writes the tracker entry; before the sheet became
+tracker-only, the 收藏 chips were what wrote the local category, so removing
+them left the two stores unlinked.
+
+Fix: after a drawer status change is enqueued for that one tracker, the sheet
+also writes the equivalent local category through a new
+`CollectController.addCollectFromTracker` (add/update the collectible plus its
+collect change, so WebDAV still carries it). Mapping: planning→想看,
+current→在看, completed→看过, paused→搁置, dropped→抛弃. It deliberately does not
+call `statusChanged`, because that would also write the other tracker and can
+create a binding the owner never asked for. The local write is not awaited by
+the dialog: a slow local write must not delay the tracker write that already
+succeeded, and a failure is logged rather than surfaced as a tracker failure.
+
+Verification:
+
+- Expected red before the fix: the new unit test failed `Expected: <1>` /
+  `Actual: <null>` — no local collectible existed after a drawer status change.
+- New unit test covers: local category written with its collect change; no
+  outbox rows created by the mirror; a second status change updates the
+  category without touching either tracker.
+- The tracker-only sheet test asserts the mirror is called with
+  在看 then 抛弃 while the outbox still separates the two trackers. It uses the
+  `onMirrorStatus` seam (the same pattern as `onRemoveBinding`) because the real
+  mirror is Hive I/O, which parks in the widget-test fake-async zone and
+  previously deadlocked the static collect-write queue.
+- Plain `mise exec -- flutter analyze` exit 0, no issues. Full
+  `mise exec -- flutter test` exit 0, 332 passed.
+- Self-review only.

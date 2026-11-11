@@ -182,3 +182,13 @@ Verification:
 - Plain `mise exec -- flutter analyze` exit 0, no issues. Full
   `mise exec -- flutter test` exit 0, 331 passed.
 - Self-review only; no independent reviewer covered this commit.
+
+### Device result (phone, 3B66A6009QZ00000)
+
+`2.4.3-haru.9` (versionCode 20408, APK SHA-256
+`6de504463102df3614d5f219b6fa761360e30649baa12107fc3061246dd5684c`) was
+installed on the owner's OnePlus PLR110 at the owner's request after the
+pad gate: `adb install -r` exited 0 with `Success`, package inspection
+confirmed `2.4.3-haru.9` / `20408`, and `firstInstallTime=2026-11-10 20:21:19`
+was preserved. The pad remains on haru.8; owner acceptance of the
+default-status behaviour is pending on device.

@@ -34,10 +34,16 @@ pulled for certificate comparison; both certificates matched the digest above.
 confirmed version `2.4.3-haru.5`, code `20404`, and the original
 `firstInstallTime=2026-11-10 21:24:19` remained unchanged. App data was preserved.
 
-Phone: awaiting USB connection. Only the pad was detected at pad completion.
-The prior phone identity is OnePlus PLR110, adb `3B66A6009QZ00000`; inspect its
-actual package and signing certificate before installation. Hana is a separate
-application and must remain untouched.
+Phone: OnePlus PLR110, adb `3B66A6009QZ00000`. Its existing Kazumi version was
+`2.4.3-haru.4`, code `20403`; the pulled APK's signing certificate matched the
+digest above. `adb -s 3B66A6009QZ00000 install -r <APK>` exited 0 with
+`Success`. Package inspection confirmed `2.4.3-haru.5`, code `20404`, with the
+original `firstInstallTime=2026-11-10 20:21:19` unchanged. Hana was untouched.
+
+Both requested devices have the same APK installed as an in-place update.
+The PR to the owner's fork is https://github.com/azusachino/Kazumi/pull/2;
+owner acceptance remains pending. All commits after the APK's source identity
+above only record verification/delivery; runtime and build inputs are unchanged.
 
 ## Owner verification
 

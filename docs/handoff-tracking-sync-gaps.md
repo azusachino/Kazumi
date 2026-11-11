@@ -85,3 +85,16 @@ On-device (OnePlus Pad OPD2404, adb 2f11f2ca, release build
 
 Not tested: a second device receiving WebDAV data; whether changing a status
 on the pad creates the binding (expected per `statusChanged`).
+
+## Resolution
+
+Resolved by [`tracking-sync-plan.md`](plans/tracking-sync-plan.md), slices 1–6:
+collected Bangumi bindings are ensured during import, WebDAV sync and startup
+backfill; AniList bindings, tombstones and Bangumi opt-outs merge through
+`/kazumiSync/tracking.json`. The outbox remains per-device. Verification uses
+fake trackers and a fake WebDAV client; no live account or device was used.
+Pre-slice-7 gates: `mise exec -- flutter test` exited 0 with 311 tests
+passing. `mise exec -- flutter analyze` exited 1 with 17 info-level findings,
+all in untouched files; the modified files had no findings after removing the
+one redundant import. These results will be rerun after the tracker-only sheet
+follow-up. Final commit IDs and gate evidence will be recorded after that run.

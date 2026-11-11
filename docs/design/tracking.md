@@ -59,14 +59,18 @@ abstract interface class Tracker {
 
 One binding per Bangumi subject per tracker, in a new Hive box:
 `subjectId`, `trackerId`, `remoteId`, `episodeOffset` (default 0),
-`statusLocked`, `score`, `lastRemoteProgress`, `lastSyncAt`, title/cover
-snapshot.
+`statusLocked`, `score`, `lastRemoteProgress`, `lastSyncAt`, `updatedAt`,
+title/cover snapshot.
 
 - Bangumi: Kazumi items already are Bangumi subjects, so the binding is
-  created automatically with `remoteId = subjectId`.
+  created automatically with `remoteId = subjectId` on collection status
+  changes, watched events, Bangumi import, WebDAV collection sync and the
+  startup backfill. A local opt-out prevents automatic binding.
 - AniList: manual. Search prefilled with the title, pick, confirm. No
-  auto-matching.
-- Removing a binding deletes local rows only; the remote list is untouched.
+  auto-matching. AniList bindings and their delete tombstones sync through the
+  WebDAV tracking file; pulled bindings remain stored while signed out.
+- Binding sync excludes tokens and the per-device outbox; the remote tracker
+  lists are untouched by local binding removal.
 
 ### Episode numbering
 

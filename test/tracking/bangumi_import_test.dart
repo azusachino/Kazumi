@@ -10,7 +10,6 @@ import 'package:kazumi/modules/collect/collect_change_module.dart';
 import 'package:kazumi/hive_registrar.g.dart';
 import 'package:kazumi/pages/collect/collect_controller.dart';
 import 'package:kazumi/services/storage/storage.dart';
-import 'package:kazumi/services/storage/settings_keys.dart';
 import 'package:kazumi/services/tracking/bangumi_binding.dart';
 import 'package:kazumi/services/tracking/tracker.dart';
 import 'package:kazumi/services/tracking/tracking_sync.dart';

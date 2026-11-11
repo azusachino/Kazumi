@@ -322,6 +322,14 @@ The episode/score wheel highlights the center selection and exposes its selected
 value to assistive technology before confirmation. Opening a drawer or cancelling
 a picker does not enqueue a remote change.
 
+A drawer status change also moves the show in the local library, because 追番
+lists local collection categories, not tracker entries. The sheet writes the
+equivalent local category and its collect change through
+`CollectController.addCollectFromTracker`, which deliberately skips the tracker
+fan-out: the dialog already enqueued the one tracker the owner chose, and
+fanning out would write the other tracker and could create a binding nobody
+asked for.
+
 An explicit add owes a status. Tapping `添加追踪` on a tracker creates the local
 binding and, only when that binding did not already exist, enqueues
 `TrackStatus.planning` (`想看`) so the tracker gains a real entry instead of the

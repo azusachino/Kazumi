@@ -9,11 +9,17 @@ import 'package:kazumi/modules/collect/collect_module.dart';
 import 'package:kazumi/modules/danmaku/danmaku_shield_sync.dart';
 import 'package:kazumi/repositories/danmaku_shield_repository.dart';
 import 'package:kazumi/services/storage/storage.dart';
+import 'package:kazumi/services/tracking/models.dart';
+import 'package:kazumi/services/tracking/stores.dart';
+import 'package:kazumi/services/tracking/tracker.dart';
+import 'package:kazumi/services/tracking/tracking_sync.dart';
 import 'package:kazumi/services/sync/danmaku_shield_sync_service.dart';
 import 'package:kazumi/services/sync/webdav.dart';
 import 'package:logger/logger.dart';
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
 import 'package:webdav_client/webdav_client.dart' as webdav;
+
+import 'tracking/tracking_sync_test.dart' show FakeTracker;
 
 void main() {
   final webDav = WebDav();
@@ -117,6 +123,193 @@ void main() {
 
     expect(GStorage.trackingBindings.keys, ['41:bangumi']);
     expect(GStorage.trackingOutbox, isEmpty);
+  });
+
+  test('tracking sync transfers AniList bindings without tokens or stale writes', () async {
+    final client = _MemoryWebDavClient();
+    webDav.client = client;
+    webDav.initialized = true;
+    webDav.webDavLocalTempDirectory = Directory('${directory.path}/webdavTemp');
+    await webDav.webDavLocalTempDirectory.create(recursive: true);
+    final hiveDirectory = Directory('${directory.path}/hive');
+    await hiveDirectory.create(recursive: true);
+    await GStorage.collectibles.clear();
+    await GStorage.collectibles.put(42, CollectedBangumi(
+      BangumiItem.fromJson({
+        'id': 42, 'name': 'Collected', 'images': <String, String>{},
+        'rating': {'rank': 0, 'score': 0, 'total': 0, 'count': <int>[]},
+      }), DateTime.utc(2026), 1,
+    ));
+    await GStorage.collectibles.flush();
+    await File('${directory.path}/collectibles.hive').copy(
+        '${hiveDirectory.path}/collectibles.hive');
+    await GStorage.bangumiAccount.settings.put(
+        SettingsKeys.bangumiAccountToken.name, 'fake-bangumi-token');
+    await GStorage.bangumiAccount.settings.put(
+        SettingsKeys.bangumiAccountKind.name, 'pasted');
+    await GStorage.anilistAccount.settings.put(
+        SettingsKeys.anilistAccountToken.name, 'fake-anilist-token');
+    await GStorage.trackingBindings.clear();
+    await GStorage.trackingTombstones.clear();
+    await GStorage.trackingOutbox.clear();
+    final bindingA = TrackingBinding(
+      subjectId: 41,
+      trackerId: TrackerId.anilist,
+      remoteId: '700',
+      title: 'Matched show',
+      total: 12,
+      generation: 'device-a-generation',
+      updatedAt: DateTime.utc(2026, 11, 11, 12),
+    );
+    await GStorage.trackingBindings.put(bindingA.key, bindingA);
+    await GStorage.trackingBindings.put('99:bangumi', TrackingBinding(
+      subjectId: 99,
+      trackerId: TrackerId.bangumi,
+      remoteId: 'bgm-only-row',
+      title: 'Bangumi only',
+    ));
+    await GStorage.putSetting(SettingsKeys.bangumiExcludedSubjectIds, ['42']);
+
+    await webDav.syncCollectibles();
+
+    const trackingPath = '/kazumiSync/tracking.json';
+    final uploaded = client.files[trackingPath]!;
+    expect(uploaded, contains('Matched show'));
+    expect(uploaded, isNot(contains('fake-bangumi-token')));
+    expect(uploaded, isNot(contains('fake-anilist-token')));
+    expect(uploaded, isNot(contains('generation')));
+    expect(uploaded, isNot(contains('lastRemoteProgress')));
+    expect(uploaded, isNot(contains('bgm-only-row')));
+    final generationA = bindingA.generation;
+
+    await GStorage.trackingBindings.clear();
+    await GStorage.putSetting(SettingsKeys.bangumiExcludedSubjectIds, <String>[]);
+    await GStorage.trackingOutbox.put('41:anilist', const OutboxEntry(
+      subjectId: 41,
+      trackerId: TrackerId.anilist,
+      remoteId: 'stale',
+      bindingGeneration: 'pending-old-generation',
+      progress: 3,
+      revision: 9,
+    ));
+    await GStorage.anilistAccount.signOut();
+    await webDav.syncCollectibles();
+
+    final bindingB = GStorage.trackingBindings.get('41:anilist')!;
+    expect(bindingB.remoteId, '700');
+    expect(bindingB.generation, isNot(generationA));
+    expect(GStorage.anilistAccount.isSignedIn, isFalse);
+    expect(GStorage.trackingBindings.get('42:bangumi'), isNull);
+    expect(
+      GStorage.getStringListSettingByName(
+          SettingsKeys.bangumiExcludedSubjectIds.name),
+      contains('42'),
+    );
+    final pending = GStorage.trackingOutbox.get('41:anilist')!;
+    expect(pending.bindingGeneration, 'pending-old-generation');
+    expect(pending.remoteId, 'stale');
+    expect(pending.revision, 9);
+
+    await webDav.syncCollectibles();
+    expect(GStorage.trackingBindings.get('41:anilist')!.generation,
+        bindingB.generation);
+    final fakeTracker = FakeTracker(TrackerId.anilist);
+    final staleWriteSync = TrackingSync(
+      bindings: HiveBindingStore(GStorage.trackingBindings),
+      outbox: HiveOutboxStore(GStorage.trackingOutbox),
+      trackers: [fakeTracker],
+      tokenProvider: (_) async => 'fake-anilist-token',
+      schedule: (_, _) => () {},
+    );
+    await staleWriteSync.drain();
+    expect(GStorage.trackingOutbox.get('41:anilist'), isNull);
+    expect(fakeTracker.reads, 0);
+    expect(fakeTracker.calls, isEmpty);
+    staleWriteSync.dispose();
+  });
+
+  test('tracking tombstones prevent resurrection and newer rebinds converge', () async {
+    final client = _MemoryWebDavClient();
+    webDav.client = client;
+    webDav.initialized = true;
+    webDav.webDavLocalTempDirectory = Directory('${directory.path}/webdavTemp');
+    await webDav.webDavLocalTempDirectory.create(recursive: true);
+    await GStorage.trackingBindings.clear();
+    await GStorage.trackingTombstones.clear();
+    const key = '51:anilist';
+    final firstTime = DateTime.utc(2026, 1, 1);
+    final deletedAt = DateTime.utc(2026, 2, 1).millisecondsSinceEpoch;
+    final reboundAt = DateTime.utc(2026, 3, 1);
+    final first = TrackingBinding(
+      subjectId: 51,
+      trackerId: TrackerId.anilist,
+      remoteId: 'first',
+      updatedAt: firstTime,
+      generation: 'device-a-first',
+    );
+    await GStorage.trackingBindings.put(key, first);
+    await webDav.syncTracking();
+
+    await GStorage.trackingBindings.clear();
+    await webDav.syncTracking();
+    final bindingB = GStorage.trackingBindings.get(key)!;
+    expect(bindingB.generation, isNot(first.generation));
+
+    await GStorage.trackingBindings.delete(key);
+    await GStorage.trackingTombstones.put(key, deletedAt);
+    await webDav.syncTracking();
+    await GStorage.trackingBindings.put(key, bindingB);
+    await GStorage.trackingTombstones.clear();
+    await webDav.syncTracking();
+    expect(GStorage.trackingBindings.get(key), isNull);
+    expect(GStorage.trackingTombstones.get(key), deletedAt);
+
+    final rebound = TrackingBinding(
+      subjectId: 51,
+      trackerId: TrackerId.anilist,
+      remoteId: 'rebound',
+      updatedAt: reboundAt,
+      generation: 'device-b-rebound',
+    );
+    await GStorage.trackingTombstones.delete(key);
+    await GStorage.trackingBindings.put(key, rebound);
+    await webDav.syncTracking();
+    await GStorage.trackingBindings.delete(key);
+    await GStorage.trackingTombstones.put(key, deletedAt);
+    await webDav.syncTracking();
+
+    final converged = GStorage.trackingBindings.get(key)!;
+    expect(converged.remoteId, 'rebound');
+    expect(converged.generation, isNot(first.generation));
+    expect(GStorage.trackingTombstones.containsKey(key), isFalse);
+  });
+
+  test('malformed and failed tracking downloads are never uploaded', () async {
+    final client = _MemoryWebDavClient();
+    webDav.client = client;
+    webDav.initialized = true;
+    webDav.webDavLocalTempDirectory = Directory('${directory.path}/webdavTemp');
+    await webDav.webDavLocalTempDirectory.create(recursive: true);
+    await GStorage.trackingBindings.clear();
+    final local = TrackingBinding(
+      subjectId: 8,
+      trackerId: TrackerId.anilist,
+      remoteId: 'local',
+      updatedAt: DateTime.utc(2026),
+    );
+    await GStorage.trackingBindings.put(local.key, local);
+    const path = '/kazumiSync/tracking.json';
+    client.files[path] = '{malformed';
+    final before = Map<String, String>.of(client.files);
+
+    await expectLater(webDav.syncTracking(), throwsFormatException);
+    expect(client.files, before);
+    expect(GStorage.trackingBindings.get(local.key)?.remoteId, 'local');
+
+    client.failRead = true;
+    await expectLater(webDav.syncTracking(), throwsStateError);
+    expect(client.files, before);
+    expect(GStorage.trackingBindings.get(local.key)?.remoteId, 'local');
   });
 
   group('danmaku shield sync', () {
@@ -291,6 +484,7 @@ class _MemoryWebDavClient implements webdav.Client {
   final files = <String, String>{};
   final binaryFiles = <String, List<int>>{};
   bool failUpload = false;
+  bool failRead = false;
   Future<void> Function()? beforeUpload;
 
   @override
@@ -318,6 +512,9 @@ class _MemoryWebDavClient implements webdav.Client {
   @override
   Future<void> read2File(String path, String savePath,
       {void Function(int, int)? onProgress, CancelToken? cancelToken}) async {
+    if (failRead && path.endsWith('/tracking.json')) {
+      throw StateError('Download failed');
+    }
     final binary = binaryFiles[path];
     if (binary != null) {
       await File(savePath).writeAsBytes(binary);

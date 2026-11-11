@@ -8,6 +8,10 @@ import 'package:kazumi/services/logging/logger.dart';
 import 'package:kazumi/modules/collect/collect_module.dart';
 import 'package:kazumi/modules/collect/collect_change_module.dart';
 import 'package:kazumi/modules/collect/collect_type.dart';
+import 'package:kazumi/modules/tracking/tracking_sync_file.dart';
+import 'package:kazumi/services/tracking/models.dart';
+import 'package:kazumi/services/tracking/tracker.dart';
+import 'package:kazumi/modules/tracking/tracking_sync_merger.dart';
 import 'package:kazumi/services/sync/history_sync_service.dart';
 import 'package:kazumi/services/sync/webdav_remote_file_commit.dart';
 import 'package:kazumi/utils/async_serial_queue.dart';
@@ -19,6 +23,7 @@ class WebDav {
   static const String _historyChangesPath = '$_historyRootPath/changes';
   static const String _historySnapshotPath = '$_historyRootPath/snapshot.json';
   static const String _danmakuShieldPath = '$_syncRootPath/danmakuShield';
+  static const String _trackingFilePath = '$_syncRootPath/tracking.json';
 
   late String webDavURL;
   late String webDavUsername;
@@ -193,9 +198,12 @@ class WebDav {
     await client.read2File('$_syncRootPath/$fileName', existingFile.path);
   }
 
-  Future<void> syncCollectibles() async {
-    return _runWebDavExclusive(_syncCollectibles);
-  }
+  Future<void> syncCollectibles() => _runWebDavExclusive(() async {
+    await _syncCollectibles();
+    await _syncTracking();
+  });
+
+  Future<void> syncTracking() => _runWebDavExclusive(_syncTracking);
 
   Future<void> _syncCollectibles() async {
     List<CollectedBangumi> remoteCollectibles = [];
@@ -253,6 +261,130 @@ class WebDav {
       await _updateBox('collectchanges');
     }
   }
+
+  Future<void> _syncTracking() async {
+    if (!initialized) await _init();
+    await _ensureLocalTempDirectory();
+    final runDirectory =
+        await webDavLocalTempDirectory.createTemp('tracking-sync-');
+    try {
+      final entries = await client.readDir(_syncRootPath);
+      var remote = const TrackingSyncFile();
+      if (entries.any((entry) => entry.name == 'tracking.json')) {
+        final download = File('${runDirectory.path}/remote.json');
+        await client.read2File(_trackingFilePath, download.path);
+        remote = TrackingSyncFile.decode(await download.readAsString());
+      }
+      final merged = TrackingSyncMerger.merge(_localTrackingFile(), remote);
+      await _applyTrackingFile(merged);
+      final upload = File('${runDirectory.path}/tracking.json');
+      await upload.writeAsString(merged.encode(), flush: true);
+      await _publishRemoteFile(
+        sourceFilePath: upload.path,
+        destinationPath: _trackingFilePath,
+        temporaryPath: '$_trackingFilePath.cache',
+      );
+    } finally {
+      try {
+        await runDirectory.delete(recursive: true);
+      } catch (e) {
+        KazumiLogger().w('WebDav: failed to clean tracking sync files', error: e);
+      }
+    }
+  }
+
+  TrackingSyncFile _localTrackingFile() {
+    final bindings = GStorage.trackingBindings.values
+        .where((binding) => binding.trackerId == TrackerId.anilist)
+        .map((binding) => TrackingSyncBinding(
+              subjectId: binding.subjectId,
+              remoteId: binding.remoteId,
+              title: binding.title,
+              cover: binding.cover,
+              total: binding.total,
+              episodeOffset: binding.episodeOffset,
+              statusLocked: binding.statusLocked,
+              score: binding.score,
+              updatedAt: binding.updatedAt,
+            ))
+        .toList();
+    final tombstones = GStorage.trackingTombstones.keys
+        .whereType<String>()
+        .where((key) => key.endsWith(':anilist'))
+        .map((key) => TrackingTombstone(
+              key: key,
+              deletedAt: GStorage.trackingTombstones.get(key) ?? 0,
+            ))
+        .toList();
+    final excluded = GStorage.getStringListSettingByName(
+      SettingsKeys.bangumiExcludedSubjectIds.name,
+    ).map(int.tryParse).whereType<int>().toList();
+    return TrackingSyncFile(
+      bindings: bindings,
+      tombstones: tombstones,
+      bangumiExcluded: excluded,
+    );
+  }
+
+  Future<void> _applyTrackingFile(TrackingSyncFile file) async {
+    final excluded = file.bangumiExcluded.map((id) => '$id').toList();
+    await GStorage.putStringListSettingByName(
+      SettingsKeys.bangumiExcludedSubjectIds.name,
+      excluded,
+    );
+    for (final id in file.bangumiExcluded) {
+      if (GStorage.trackingBindings.containsKey('$id:bangumi')) {
+        await GStorage.bangumiBindingManager.stopTracking(id);
+      }
+    }
+
+    for (final binding in file.bindings) {
+      final key = binding.key;
+      final local = GStorage.trackingBindings.get(key);
+      if (local == null || !_sameSyncedBinding(local, binding)) {
+        await GStorage.trackingTombstones.delete(key);
+        await GStorage.trackingBindings.put(
+          key,
+          TrackingBinding(
+            subjectId: binding.subjectId,
+            trackerId: TrackerId.anilist,
+            remoteId: binding.remoteId,
+            episodeOffset: binding.episodeOffset,
+            statusLocked: binding.statusLocked,
+            score: binding.score,
+            title: binding.title,
+            cover: binding.cover,
+            total: binding.total,
+            updatedAt: binding.updatedAt,
+          ),
+        );
+      } else if (GStorage.trackingTombstones.containsKey(key)) {
+        await GStorage.trackingTombstones.delete(key);
+      }
+    }
+    for (final tombstone in file.tombstones) {
+      await GStorage.trackingTombstones.put(
+        tombstone.key,
+        tombstone.deletedAt,
+      );
+      await GStorage.trackingBindings.delete(tombstone.key);
+    }
+  }
+
+  bool _sameSyncedBinding(
+    TrackingBinding local,
+    TrackingSyncBinding remote,
+  ) =>
+      local.subjectId == remote.subjectId &&
+      local.trackerId == TrackerId.anilist &&
+      local.remoteId == remote.remoteId &&
+      local.title == remote.title &&
+      local.cover == remote.cover &&
+      local.total == remote.total &&
+      local.episodeOffset == remote.episodeOffset &&
+      local.statusLocked == remote.statusLocked &&
+      local.score == remote.score &&
+      local.updatedAt == remote.updatedAt;
 
   Future<void> _ensureCollectedBangumiBindings() async {
     try {

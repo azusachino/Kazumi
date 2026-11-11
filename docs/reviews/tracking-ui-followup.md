@@ -57,9 +57,9 @@ not a replacement of the overview/comments/character content.
   is claimed for this follow-up; the earlier independent reports describe their
   own recorded revisions only.
 
-Physical verification will use a new local `2.4.3-haru.6` build on the pad,
-without confirming changes to tracker status, progress or score. Screenshots
-are temporary workstation scratch; results will be recorded here after install.
+That paragraph described a planned `2.4.3-haru.6` check. haru.6 (20405) was
+built and installed on the pad before this cache/picker follow-up; its screen
+results are superseded by the measured haru.7 and haru.8 device sections below.
 
 ## Drawer cache and compact picker (haru.7)
 
@@ -97,12 +97,14 @@ blank row; the number dialog used `double.maxFinite`.
   tests were added, `flutter test test/tracking/tracking_sync_test.dart
   test/tracking/tracking_ui_test.dart` exited 1 with two load failures
   (`Setter/Member not found: GStorage.trackingEntryCache`).
-- Focused cache + sync + UI: exit 0, 45 passed (cache 3, sync 20, UI 21).
+- Focused cache + sync + UI: exit 0, 45 passed across the three test files.
   Covers account/generation isolation, null-entry vs miss, corrupt persisted
   rows, no duplicate read on reopen, stale row visible during a gated refresh,
   opt-out, the compact dialog, and the sync cache refresh before row removal.
 - After the review guards and stale line: cache + UI exit 0, 24 passed; plain
   `flutter analyze` exit 0, no issues; full `flutter test` exit 0, 330 passed.
+  The haru.8 build reuses these runtime inputs; no test was rerun for the
+  docs-only commits.
 - Source commits: eec75394 (cache, picker, tests), d065464f (guard, stale
   line, future-clock check).
 
@@ -118,8 +120,27 @@ blank row; the number dialog used `double.maxFinite`.
   cold read. The number picker is a compact centered dialog with the selected
   value highlighted. Only 取消/Back were used; no remote status, progress or
   score was changed.
-- Limit: the installed haru.7 predates d065464f, so the stale-refresh line and
-  the post-persist guards are covered by tests, not by this install. The next
-  installed build should be `2.4.3-haru.8` (20407). The phone remains haru.5.
+- Limit: haru.7 predates d065464f, so its install did not exercise the
+  stale-refresh line or the post-persist guards. haru.8 below does.
 - The cache is per device and per account; the first open after install is a
   cold read, and the cache does not sync over WebDAV.
+
+### Device result (pad, 2f11f2ca) - haru.8
+
+- `2.4.3-haru.8` (versionCode 20407) built from docs HEAD 2d6b6ff5, whose
+  runtime source is d065464f. Build exit 0 in 44.5 s, 33.5 MB. APK SHA-256
+  `5bca48b3a6c763982646d3189d67a338edb68f2a4c65e51f39128a2e3f92a0fe`;
+  signer SHA-256
+  `7b51900552bbc088391e28fb243914402e5fe258c33f1bed2116409dcb61c4a9`
+  (the same certificate as the installed app). `install -r`: Success;
+  `firstInstallTime` stayed 2026-11-10 21:24:19, so app data was kept.
+- Opening the drawer 0.3 s after tapping `追踪` already shows both trackers
+  with `想看`, `0 / 12` and `0` from the persisted snapshot, plus the quiet
+  `正在刷新追踪状态…` line under the Bangumi row; three seconds later the line is
+  gone after the refresh and the values are unchanged. This exercises the
+  stale-refresh line and the post-persist guard path on device.
+- The episode picker is again a compact centered dialog with the highlighted
+  selected value; only 取消/Back were used and no remote status, progress or
+  score was written. Screenshots: `.tmp/kazumi-tracking-sync/deepseek-implementation/haru8-drawer-cached.png`,
+  `haru8-drawer-refreshed.png`, `haru8-picker.png` (workstation scratch).
+- Phone remains on haru.5; no rebuild or install occurred there.

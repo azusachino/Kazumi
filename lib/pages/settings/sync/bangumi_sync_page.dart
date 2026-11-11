@@ -110,6 +110,7 @@ class _BangumiSyncPageState extends State<BangumiSyncPage> {
                   bangumi,
                   bangumi.tracker as BangumiTracker,
                   CollectCrudRepository(),
+                  ensureBinding: GStorage.bangumiBindingManager.ensureBangumiBinding,
                 ).run();
                 return '已从 Bangumi 导入 $count 部番剧';
               }),

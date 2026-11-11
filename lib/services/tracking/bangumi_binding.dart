@@ -38,14 +38,14 @@ class BangumiBindingManager {
     return saved is List ? saved.whereType<String>().toList() : <String>[];
   }
 
-  Future<void> _ensureBinding(BangumiItem item) async {
+  Future<bool> _ensureBinding(BangumiItem item) async {
     final id = '${item.id}';
     if (!account.isSignedIn || _excludedSubjectIds.contains(id)) {
-      return;
+      return false;
     }
     final key = '${item.id}:${TrackerId.bangumi.name}';
     if (await bindings.get(key) != null) {
-      return;
+      return false;
     }
     await bindings.put(
       TrackingBinding(
@@ -56,10 +56,22 @@ class BangumiBindingManager {
         cover: item.images['medium'],
       ),
     );
+    return true;
   }
 
-  Future<void> ensureBangumiBinding(BangumiItem item) =>
-      _queued(() => _ensureBinding(item));
+  Future<void> ensureBangumiBinding(BangumiItem item) => _queued(() async {
+    await _ensureBinding(item);
+  });
+
+  Future<int> ensureBangumiBindings(Iterable<BangumiItem> items) async {
+    var created = 0;
+    await _queued(() async {
+      for (final item in items) {
+        if (await _ensureBinding(item)) created++;
+      }
+    });
+    return created;
+  }
 
   Future<void> stopTracking(int subjectId) => _queued(() async {
     final ids = _excludedSubjectIds;

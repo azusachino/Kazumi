@@ -142,6 +142,19 @@ Files: `lib/services/sync/webdav.dart`,
    open info page of やがて君になる, button reads `在看 · 1`, sheet shows bgm
    bound. Do not change any status (it writes to the real Bangumi account).
 
+## Execution evidence
+
+Runtime model: `codex/gpt-6-luna` (provider `magpie`); implementation owner is
+hc terminal `t4d`; lead is hc terminal `t4b`. No additional peer implementation
+was used.
+
+| Slice | Commit | Expected red | Green evidence |
+| --- | --- | --- | --- |
+| 1 | pending | `mise exec -- flutter test test/tracking/bangumi_import_test.dart` exited 1: compile error, `BangumiImport` had no `ensureBinding` parameter. | Same focused command exited 0: 4 tests passed. |
+
+Device verification: skipped per explicit task scope; no device or real tracker
+account was accessed.
+
 ## Explicitly out of scope
 
 - Syncing the outbox, tokens, progress or `lastSyncAt`.

@@ -338,7 +338,9 @@ work; F8(a) is already assigned to the lead's docs-only closeout.
 
 The report above is preserved as received and applies only to the reviewed
 revision `edb4abf4dedd84ab3955a6c8c740beec1840aaa8`. The following are
-subsequent dispositions; DeepSeek has not reviewed these changes yet.
+subsequent dispositions. DeepSeek's completed focused recheck of
+`973aa8330476fdec4b15eefb85dc7888665d86a0` is preserved in
+[`tracking-sync-recheck.md`](tracking-sync-recheck.md).
 
 - **F1 fixed in the ninth local commit:** same-device binding/tombstone pairs
   now resolve to their newer timestamp, with tombstone winning an equal-time
@@ -370,5 +372,22 @@ subsequent dispositions; DeepSeek has not reviewed these changes yet.
   controls; the UI test still proves the real collection → binding/outbox →
   badge path and the local-only delete behavior.
 
-A focused DeepSeek recheck of the post-review delta is pending. No account,
-device or remote service was used for this disposition.
+The focused DeepSeek recheck passed at
+`973aa8330476fdec4b15eefb85dc7888665d86a0`: R1–R8 met, plain analyzer exit 0,
+and 39 focused tests passed (exit 0). The lead independently reran the full
+suite on that exact source: 318 passed, exit 0, with the tree clean afterward.
+No P1/P2 finding remains in the recovery delta. O1 is a nonblocking mirror-case
+integration coverage note, O2 is a compiler cache notice with repeated passing
+checks, and O3 is resolved by the exact revision and full-suite evidence here.
+The original report's documented plan limits and inferred simultaneous-edit
+race remain as scoped above. No account, device or remote service was used.
+
+Coordination closeout: Pi Codex/Luna (`magpie/codex/gpt-6-luna`, high) in
+Herdr `t4d` implemented the slices and recovery fix with exclusive checkout
+ownership. Pi DeepSeek (`magpie/opencode-go/deepseek-v4.1-flash`, medium) in
+Herdr `t4g` independently reviewed the full range and then the recovery delta.
+The lead inspected committed diffs, reconciled findings and reran the required
+gates. Both task-created peer roles are complete, their child test terminals
+have been removed, and the peers are closed at task closeout. The worktree and
+local branch remain for owner review. No remote publication or device check
+was authorized; those steps were skipped.

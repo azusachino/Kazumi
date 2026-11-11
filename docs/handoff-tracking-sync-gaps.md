@@ -137,8 +137,8 @@ tests pass.
 The independent review is preserved verbatim, followed by the lead's
 post-review disposition, in
 [`docs/reviews/tracking-sync-verification.md`](reviews/tracking-sync-verification.md).
-Its verdict applies to `edb4abf4dedd84ab3955a6c8c740beec1840aaa8`; it has not yet
-reviewed the changes below.
+Its initial verdict applies to `edb4abf4dedd84ab3955a6c8c740beec1840aaa8`.
+The completed focused recheck below covers the subsequent recovery fix.
 
 F1 is fixed in the ninth local slice: the pure merger resolves a same-side
 binding/tombstone pair by timestamp, preferring the tombstone on an equal-time
@@ -154,7 +154,21 @@ controls no longer belong to the tracker sheet.
 
 F2/F3/F7 limits, strict malformed-remote handling, and the inferred F4
 simultaneous-edit race are documented in `docs/design/tracking.md`. On the
-ninth-slice source, plain `mise exec -- flutter analyze` exited 0 with no issues;
-full `mise exec -- flutter test` exited 0 with 318 tests passed. After the ninth
-local commit, hold the source for DeepSeek's focused recheck. No account,
-device or remote service was used.
+ninth-slice source, `973aa8330476fdec4b15eefb85dc7888665d86a0` on
+`task/tracking-sync`, plain `mise exec -- flutter analyze` exited 0 with no
+issues; full `mise exec -- flutter test` exited 0 with 318 tests passed.
+DeepSeek independently rechecked that exact revision: all eight recovery
+criteria met, plain analysis exit 0, and all 39 focused merger/WebDAV/UI tests
+passed (exit 0). The lead also reran the full suite at that revision: 318
+passed, exit 0, with a clean tree afterward. The recheck is preserved in
+[`tracking-sync-recheck.md`](reviews/tracking-sync-recheck.md).
+
+Execution is complete locally. The following closeout commit changes only
+Markdown records; runtime source, tests, dependencies and generated inputs
+remain identical to the reviewed revision, so the recorded gate results apply
+to those unchanged inputs. No push, PR, release, installation, account write or
+device verification was performed. The branch/worktree is retained for owner
+review; no work remains uncommitted. The next owner action is to review the
+local branch and decide separately whether to request device verification or
+remote publication. Known limits are in `docs/design/tracking.md`; the inferred
+simultaneous manual-edit/WebDAV race remains follow-up work.

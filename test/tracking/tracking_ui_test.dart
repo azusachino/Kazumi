@@ -5,6 +5,7 @@ import 'package:flutter_modular/flutter_modular.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive_ce/hive.dart';
 import 'package:kazumi/bean/widget/collect_button.dart';
+import 'package:kazumi/bean/widget/tracker_logo.dart';
 import 'package:kazumi/pages/collect/collect_controller.dart';
 import 'package:kazumi/repositories/collect_crud_repository.dart';
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
@@ -38,6 +39,7 @@ class _FakeTracker implements Tracker {
   RemoteEntry? remote;
   List<TrackerSearchResult> results = const [];
   int saves = 0;
+  bool failReads = false;
   String? lastQuery;
 
   @override
@@ -54,7 +56,10 @@ class _FakeTracker implements Tracker {
     return results;
   }
   @override
-  Future<RemoteEntry?> readEntry(String token, String remoteId) async => remote;
+  Future<RemoteEntry?> readEntry(String token, String remoteId) async {
+    if (failReads) throw const TrackerNetworkException();
+    return remote;
+  }
   @override
   Future<int> save(
     String token,
@@ -166,6 +171,108 @@ void main() {
     expect(source, isNot(contains('showTrackingSheet(')));
   });
 
+  testWidgets('tracking action does not present local library status as tracker status', (tester) async {
+    await tester.runAsync(() => GStorage.bangumiAccount.signInWithToken('token'));
+    await tester.runAsync(() => _bindings.put(TrackingBinding(
+      subjectId: 123, trackerId: TrackerId.bangumi, remoteId: '123',
+    )));
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body:
+      CollectButton.extend(bangumiItem: _item()),
+    )));
+    expect(find.text('已追踪'), findsOneWidget);
+    expect(find.textContaining('未追'), findsNothing);
+    expect(find.byType(Badge), findsNothing);
+    expect(find.textContaining('· 1'), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('pending tracker status remains visible while remote is stale', (tester) async {
+    await tester.runAsync(() => GStorage.bangumiAccount.signInWithToken('token'));
+    final binding = TrackingBinding(subjectId: 123, trackerId: TrackerId.bangumi, remoteId: '123');
+    await tester.runAsync(() => _bindings.put(binding));
+    await tester.runAsync(() => CollectCrudRepository().addCollectibleIfMissing(_item(), 1));
+    _bangumiTracker.remote = const RemoteEntry(progress: 2, status: TrackStatus.planning, total: 12);
+    GStorage.trackingSync.dispose();
+    await tester.pumpWidget(MaterialApp(home: Material(child: TrackingSheet(item: _item()))));
+    await tester.pumpAndSettle();
+    expect(find.text('想看'), findsOneWidget);
+    await tester.runAsync(() => _outbox.put(OutboxEntry(
+      subjectId: 123, trackerId: TrackerId.bangumi, remoteId: '123',
+      bindingGeneration: binding.generation, status: TrackStatus.current,
+    )));
+    await tester.pumpAndSettle();
+    expect(find.text('在看'), findsOneWidget);
+    expect(find.text('想看'), findsNothing);
+    expect(find.text('等待同步'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('failed tracker reads are visible and retry without writing a status', (tester) async {
+    await tester.runAsync(() => GStorage.bangumiAccount.signInWithToken('token'));
+    await tester.runAsync(() => _bindings.put(TrackingBinding(
+      subjectId: 123, trackerId: TrackerId.bangumi, remoteId: '123',
+    )));
+    _bangumiTracker.failReads = true;
+    await tester.pumpWidget(MaterialApp(home: Material(child: TrackingSheet(item: _item()))));
+    await tester.pumpAndSettle();
+    expect(find.text('读取失败'), findsOneWidget);
+    expect(find.text('重新读取'), findsOneWidget);
+    _bangumiTracker.failReads = false;
+    _bangumiTracker.remote = const RemoteEntry(progress: 0, status: TrackStatus.planning);
+    await tester.tap(find.text('重新读取'));
+    await tester.pumpAndSettle();
+    expect(find.text('想看'), findsOneWidget);
+    expect(find.text('读取失败'), findsNothing);
+    expect(_bangumiTracker.saves, 0);
+    expect(GStorage.trackingOutbox, isEmpty);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('stale-generation pending status cannot mask the current tracker', (tester) async {
+    await tester.runAsync(() => GStorage.bangumiAccount.signInWithToken('token'));
+    await tester.runAsync(() async {
+      await _bindings.put(TrackingBinding(
+        subjectId: 123, trackerId: TrackerId.bangumi, remoteId: '123', generation: 'new',
+      ));
+      await _outbox.put(const OutboxEntry(
+        subjectId: 123, trackerId: TrackerId.bangumi, remoteId: '123',
+        bindingGeneration: 'old', status: TrackStatus.current,
+      ));
+    });
+    _bangumiTracker.remote = const RemoteEntry(progress: 0, status: TrackStatus.planning);
+    await tester.pumpWidget(MaterialApp(home: Material(child: TrackingSheet(item: _item()))));
+    await tester.pumpAndSettle();
+    expect(find.text('想看'), findsOneWidget);
+    expect(find.text('在看'), findsNothing);
+    expect(find.text('等待同步'), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('episode wheel identifies the selected episode before confirmation', (tester) async {
+    await tester.runAsync(() => GStorage.bangumiAccount.signInWithToken('token'));
+    await tester.runAsync(() => _bindings.put(TrackingBinding(
+      subjectId: 123, trackerId: TrackerId.bangumi, remoteId: '123', total: 12,
+    )));
+    _bangumiTracker.remote = const RemoteEntry(progress: 4, status: TrackStatus.planning, total: 12);
+    await tester.pumpWidget(MaterialApp(home: Material(child: TrackingSheet(item: _item()))));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('4 / 12'));
+    await tester.pumpAndSettle();
+    final wheel = find.byType(ListWheelScrollView);
+    Finder selected(int value) => find.descendant(of: wheel, matching: find.byWidgetPredicate(
+      (widget) => widget is Semantics && widget.properties.selected == true &&
+          widget.properties.label == '已看集数：$value',
+    ));
+    expect(selected(4), findsOneWidget);
+    await tester.drag(wheel, const Offset(0, -40));
+    await tester.pumpAndSettle();
+    expect(selected(5), findsOneWidget);
+    expect(selected(4), findsNothing);
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets('signed-out state points to account settings', (tester) async {
     await tester.pumpWidget(
       MaterialApp(
@@ -201,7 +308,7 @@ void main() {
       _settings.get(SettingsKeys.bangumiExcludedSubjectIds.name),
       isNot(contains('123')),
     );
-    expect(find.text('bgm'), findsOneWidget);
+    expect(find.byType(TrackerLogo), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
   });
 
@@ -244,7 +351,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(find.text('4 / 12'), findsOneWidget);
+    expect(find.text('5 / 12'), findsOneWidget);
     expect(find.text('8.0'), findsOneWidget);
     expect(find.text('在看'), findsOneWidget);
     expect(find.textContaining('同步失败'), findsOneWidget);
@@ -477,8 +584,8 @@ void main() {
         bangumiItem: _item(), onOpen: () => opened++, onClose: () => closed++,
       ),
     ))));
-    expect(find.text('未追'), findsOneWidget);
-    await tester.tap(find.text('未追'));
+    expect(find.text('追踪'), findsOneWidget);
+    await tester.tap(find.text('追踪'));
     await tester.pumpAndSettle();
     expect(opened, 1);
     expect(find.byType(TrackingSheet), findsOneWidget);
@@ -490,19 +597,19 @@ void main() {
     expect(GStorage.collectibles.get(123)?.type, 1);
     expect(GStorage.trackingOutbox.get('123:bangumi')?.status, TrackStatus.current);
     expect(GStorage.trackingBindings.get('123:bangumi')?.title, 'Example');
-    expect(find.text('在看 · 1'), findsOneWidget);
-    expect(find.text('状态'), findsOneWidget);
+    expect(find.text('已追踪'), findsOneWidget);
+    expect(find.text('在看'), findsOneWidget);
 
     await tester.runAsync(() => controller.deleteCollect(_item()));
     await tester.pumpAndSettle();
     expect(GStorage.collectibles.get(123), isNull);
     expect(GStorage.trackingBindings.get('123:bangumi'), isNotNull);
     expect(GStorage.trackingOutbox.get('123:bangumi')?.status, TrackStatus.current);
-    expect(find.text('未追 · 1'), findsOneWidget);
+    expect(find.text('已追踪'), findsOneWidget);
     Navigator.of(tester.element(find.byType(TrackingSheet))).pop();
     await tester.pumpAndSettle();
     expect(closed, 1);
-    expect(find.text('未追 · 1'), findsOneWidget);
+    expect(find.text('已追踪'), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
   });
 

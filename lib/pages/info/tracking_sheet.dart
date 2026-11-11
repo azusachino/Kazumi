@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_modular/flutter_modular.dart';
 import 'package:hive_ce_flutter/hive_flutter.dart';
 import 'package:kazumi/bean/dialog/adaptive_bottom_sheet.dart';
+import 'package:kazumi/bean/widget/tracker_logo.dart';
 import 'package:kazumi/modules/bangumi/bangumi_item.dart';
 import 'package:kazumi/modules/bangumi/bangumi_title.dart';
 import 'package:kazumi/pages/info/anilist_search_page.dart';
@@ -33,6 +34,7 @@ class _TrackingSheetState extends State<TrackingSheet> {
   int _revision = 0;
   final Set<String> _reading = {};
   final Set<String> _loaded = {};
+  final Set<String> _readErrors = {};
   late final _bindingChanges = GStorage.trackingBindings.listenable();
   late final _outboxChanges = GStorage.trackingOutbox.listenable();
 
@@ -53,6 +55,9 @@ class _TrackingSheetState extends State<TrackingSheet> {
   void _refresh() {
     _revision++;
     _loaded.clear();
+    _remote.clear();
+    _remoteGeneration.clear();
+    _readErrors.clear();
     if (mounted) setState(() {});
   }
 
@@ -72,7 +77,7 @@ class _TrackingSheetState extends State<TrackingSheet> {
       final token = binding.trackerId == TrackerId.bangumi
           ? await GStorage.bangumiAccount.validToken()
           : await GStorage.anilistAccount.validToken();
-      if (token == null) return;
+      if (token == null) throw const TrackerAuthException();
       final entry = await GStorage.trackingSync.trackers[binding.trackerId]!
           .readEntry(token, binding.remoteId);
       if (revision == _revision &&
@@ -86,7 +91,12 @@ class _TrackingSheetState extends State<TrackingSheet> {
         });
       }
     } catch (_) {
-      if (revision == _revision) _loaded.add(binding.key);
+      if (revision == _revision && mounted) {
+        setState(() {
+          _loaded.add(binding.key);
+          _readErrors.add(binding.key);
+        });
+      }
     } finally {
       _reading.remove(binding.key);
       if (mounted && revision != _revision) setState(() {});
@@ -288,21 +298,7 @@ class _TrackingSheetState extends State<TrackingSheet> {
     );
   }
 
-  Widget _logo(TrackerId id) => Container(
-    width: 40,
-    height: 40,
-    alignment: Alignment.center,
-    decoration: BoxDecoration(
-      color: id == TrackerId.bangumi
-          ? const Color(0xFFF09199)
-          : const Color(0xFF02A9FF),
-      borderRadius: BorderRadius.circular(8),
-    ),
-    child: Text(
-      id == TrackerId.bangumi ? 'bgm' : 'AL',
-      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-    ),
-  );
+  Widget _logo(TrackerId id) => TrackerLogo(trackerId: id);
 
   Widget _buildTracker(TrackerId id) {
     final key = '${widget.item.id}:${id.name}';
@@ -328,13 +324,18 @@ class _TrackingSheetState extends State<TrackingSheet> {
       );
     }
     _read(binding);
-    final pending = GStorage.trackingOutbox.get(key);
+    final queued = GStorage.trackingOutbox.get(key);
+    final pending = queued?.bindingGeneration == binding.generation &&
+            queued?.remoteId == binding.remoteId
+        ? queued
+        : null;
     final entry = _remoteGeneration[key] == binding.generation
         ? _remote[key]
         : null;
-    final progress = entry?.progress ?? binding.lastRemoteProgress ?? 0;
+    final status = pending?.status ?? entry?.status;
+    final progress = pending?.progress ?? entry?.progress ?? binding.lastRemoteProgress ?? 0;
     final total = entry?.total ?? binding.total;
-    final score = entry?.score ?? binding.score;
+    final score = pending?.score ?? entry?.score ?? binding.score;
     final title = id == TrackerId.bangumi
         ? widget.item.displayTitle
         : (binding.title?.isNotEmpty == true ? binding.title! : 'AniList');
@@ -404,8 +405,10 @@ class _TrackingSheetState extends State<TrackingSheet> {
             child: Row(
               children: [
                 _cell(
-                  entry == null ? '状态' : _status(entry.status),
-                  () => _selectStatus(binding, entry?.status),
+                  status != null ? _status(status) :
+                      _readErrors.contains(key) ? '读取失败' :
+                      _loaded.contains(key) ? '状态' : '读取中…',
+                  () => _selectStatus(binding, status),
                 ),
                 const VerticalDivider(width: 1),
                 _cell(
@@ -434,6 +437,19 @@ class _TrackingSheetState extends State<TrackingSheet> {
             ),
           ),
         ),
+        if (_readErrors.contains(key))
+          Row(
+            children: [
+              const Expanded(child: Text('无法读取追踪状态')),
+              TextButton(
+                onPressed: () => setState(() {
+                  _loaded.remove(key);
+                  _readErrors.remove(key);
+                }),
+                child: const Text('重新读取'),
+              ),
+            ],
+          ),
         if (pending != null)
           Row(
             children: [
@@ -494,7 +510,7 @@ class _NumberDialogState extends State<_NumberDialog> {
   late int selected = widget.maximum == null
       ? widget.initial
       : widget.initial.clamp(0, widget.maximum!);
-  late final _controller = TextEditingController(text: '${widget.initial}');
+  late final _controller = TextEditingController(text: '$selected');
   late final _wheel = FixedExtentScrollController(initialItem: selected);
 
   @override
@@ -517,17 +533,44 @@ class _NumberDialogState extends State<_NumberDialog> {
         : SizedBox(
             width: double.maxFinite,
             height: 200,
-            child: ListWheelScrollView.useDelegate(
-              controller: _wheel,
-              itemExtent: 40,
-              physics: const FixedExtentScrollPhysics(),
-              onSelectedItemChanged: (value) => selected = value,
-              childDelegate: ListWheelChildBuilderDelegate(
-                childCount: widget.maximum! + 1,
-                builder: (context, index) => Center(
-                  child: Text(widget.score && index == 0 ? '不评分' : '$index'),
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                IgnorePointer(
+                  child: Container(
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.secondaryContainer,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
                 ),
-              ),
+                ListWheelScrollView.useDelegate(
+                  controller: _wheel,
+                  itemExtent: 40,
+                  physics: const FixedExtentScrollPhysics(),
+                  onSelectedItemChanged: (value) => setState(() => selected = value),
+                  childDelegate: ListWheelChildBuilderDelegate(
+                    childCount: widget.maximum! + 1,
+                    builder: (context, index) => Semantics(
+                      selected: index == selected,
+                      label: '${widget.title}：$index',
+                      child: Center(
+                        child: Text(
+                          widget.score && index == 0 ? '不评分' : '$index',
+                          style: TextStyle(
+                            fontSize: index == selected ? 24 : 18,
+                            fontWeight: index == selected ? FontWeight.bold : FontWeight.normal,
+                            color: index == selected
+                                ? Theme.of(context).colorScheme.onSecondaryContainer
+                                : Theme.of(context).colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
     actions: [

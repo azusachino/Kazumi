@@ -303,14 +303,24 @@ It follows the owner's animeko setting (fork PR #2,
   history lists, search results, player and download titles, comments
   sheet headers); character and staff names are unchanged.
 
-## Collection button as the tracking entry
+## Tracking action on the detail page
 
-The info page's collection-status button ("在看", "未追", …) keeps its
-label, adds the number of bound trackers, and opens the tracker-only sheet.
-Local collection status remains managed through the existing collection and
-library flows; the tracking sheet exposes status, progress and score controls
-for each signed-in tracker. The separate 追踪 icon is gone. The Bangumi block
-shows the subject's display title (follows 显示原名).
+The detail page uses a dedicated `追踪` / `已追踪` action, following Mihon's
+separation of library membership and tracker state. It opens the tracker-only
+sheet. It does not display a local collection category or a count of bindings:
+`想看 · 2` mixed a local category with a service count, and could contradict
+both services' current status. Library collection management remains in the
+existing collection/library flows.
+
+Each tracker row uses its service's brand artwork with an accessible name.
+The Bangumi block follows the subject's display-title preference. Status,
+progress and score come from that service's current entry; a matching-generation
+outbox edit takes precedence while pending or failed and keeps its visible sync
+indicator. Stale-generation rows are ignored. An unsuccessful read is shown
+explicitly with `重新读取`; it is never presented as a successful status read.
+The episode/score wheel highlights the center selection and exposes its selected
+value to assistive technology before confirmation. Opening a drawer or cancelling
+a picker does not enqueue a remote change.
 
 Build, verification and upstream-sync notes live in the owner's workstation
 KB (`docs/projects/kazumi.md`), not in this repository.

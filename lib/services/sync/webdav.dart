@@ -7,6 +7,7 @@ import 'package:kazumi/services/storage/storage.dart';
 import 'package:kazumi/services/logging/logger.dart';
 import 'package:kazumi/modules/collect/collect_module.dart';
 import 'package:kazumi/modules/collect/collect_change_module.dart';
+import 'package:kazumi/modules/collect/collect_type.dart';
 import 'package:kazumi/services/sync/history_sync_service.dart';
 import 'package:kazumi/services/sync/webdav_remote_file_commit.dart';
 import 'package:kazumi/utils/async_serial_queue.dart';
@@ -210,6 +211,7 @@ class WebDav {
       if (GStorage.collectChanges.isNotEmpty) {
         await _updateBox('collectchanges');
       }
+      await _ensureCollectedBangumiBindings();
       return;
     }
 
@@ -245,9 +247,22 @@ class WebDav {
     if (remoteChanges.isNotEmpty || remoteCollectibles.isNotEmpty) {
       await GStorage.patchCollectibles(remoteCollectibles, remoteChanges);
     }
+    await _ensureCollectedBangumiBindings();
     await _updateBox('collectibles');
     if (GStorage.collectChanges.isNotEmpty) {
       await _updateBox('collectchanges');
+    }
+  }
+
+  Future<void> _ensureCollectedBangumiBindings() async {
+    try {
+      await GStorage.bangumiBindingManager.ensureBangumiBindings(
+        GStorage.collectibles.values
+            .where((item) => CollectType.fromValue(item.type).isCollected)
+            .map((item) => item.bangumiItem),
+      );
+    } catch (e) {
+      KazumiLogger().e('WebDav: failed to backfill tracking bindings', error: e);
     }
   }
 

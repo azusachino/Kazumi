@@ -4,6 +4,8 @@ import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive_ce/hive.dart';
+import 'package:kazumi/modules/bangumi/bangumi_item.dart';
+import 'package:kazumi/modules/collect/collect_module.dart';
 import 'package:kazumi/modules/danmaku/danmaku_shield_sync.dart';
 import 'package:kazumi/repositories/danmaku_shield_repository.dart';
 import 'package:kazumi/services/storage/storage.dart';
@@ -72,6 +74,49 @@ void main() {
     expect(webDav.initialized, isFalse);
     await expectLater(webDav.setEnabled(true), throwsException);
     expect(GStorage.getSetting(SettingsKeys.webDavEnable), isFalse);
+  });
+
+  test(
+      'collect sync backfills Bangumi bindings idempotently without outbox writes',
+      () async {
+    final client = _MemoryWebDavClient();
+    webDav.client = client;
+    webDav.initialized = true;
+    webDav.webDavLocalTempDirectory = Directory('${directory.path}/webdavTemp');
+    await webDav.webDavLocalTempDirectory.create(recursive: true);
+    final hiveDirectory = Directory('${directory.path}/hive');
+    await hiveDirectory.create(recursive: true);
+    await GStorage.bangumiAccount.settings.put(
+        SettingsKeys.bangumiAccountToken.name, 'fake-token');
+    await GStorage.bangumiAccount.settings.put(
+        SettingsKeys.bangumiAccountKind.name, 'pasted');
+    await GStorage.trackingBindings.clear();
+    await GStorage.trackingOutbox.clear();
+    await GStorage.collectibles.clear();
+    await GStorage.collectibles.putAll({
+      for (final id in [41, 42])
+        id: CollectedBangumi(
+          BangumiItem.fromJson({
+            'id': id,
+            'name': 'show $id',
+            'images': <String, String>{},
+            'rating': {'rank': 0, 'score': 0, 'total': 0, 'count': <int>[]},
+          }),
+          DateTime.utc(2026),
+          1,
+        ),
+    });
+    await GStorage.bangumiAccount.settings.put(
+        SettingsKeys.bangumiExcludedSubjectIds.name, ['42']);
+    await GStorage.collectibles.flush();
+    await File('${directory.path}/collectibles.hive')
+        .copy('${hiveDirectory.path}/collectibles.hive');
+
+    await webDav.syncCollectibles();
+    await webDav.syncCollectibles();
+
+    expect(GStorage.trackingBindings.keys, ['41:bangumi']);
+    expect(GStorage.trackingOutbox, isEmpty);
   });
 
   group('danmaku shield sync', () {
@@ -244,6 +289,7 @@ void main() {
 
 class _MemoryWebDavClient implements webdav.Client {
   final files = <String, String>{};
+  final binaryFiles = <String, List<int>>{};
   bool failUpload = false;
   Future<void> Function()? beforeUpload;
 
@@ -260,12 +306,23 @@ class _MemoryWebDavClient implements webdav.Client {
               name: entry.key.substring(path.length + 1),
               isDir: false,
               size: entry.value.length),
+      for (final entry in binaryFiles.entries)
+        if (entry.key.startsWith('$path/'))
+          webdav.File(
+              name: entry.key.substring(path.length + 1),
+              isDir: false,
+              size: entry.value.length),
     ];
   }
 
   @override
   Future<void> read2File(String path, String savePath,
       {void Function(int, int)? onProgress, CancelToken? cancelToken}) async {
+    final binary = binaryFiles[path];
+    if (binary != null) {
+      await File(savePath).writeAsBytes(binary);
+      return;
+    }
     final contents = files[path];
     if (contents == null) throw StateError('File missing: $path');
     await File(savePath).writeAsString(contents);
@@ -276,18 +333,28 @@ class _MemoryWebDavClient implements webdav.Client {
       {void Function(int, int)? onProgress, CancelToken? cancelToken}) async {
     await beforeUpload?.call();
     if (failUpload) throw StateError('Upload failed');
-    files[path] = await File(localFilePath).readAsString();
+    if (path.endsWith('.tmp') || path.endsWith('.tmp.cache')) {
+      binaryFiles[path] = await File(localFilePath).readAsBytes();
+    } else {
+      files[path] = await File(localFilePath).readAsString();
+    }
   }
 
   @override
   Future<void> remove(String path, [CancelToken? cancelToken]) async {
     files.remove(path);
+    binaryFiles.remove(path);
   }
 
   @override
   Future<void> rename(String oldPath, String newPath, bool overwrite,
       [CancelToken? cancelToken]) async {
-    files[newPath] = files.remove(oldPath)!;
+    final contents = files.remove(oldPath);
+    if (contents != null) {
+      files[newPath] = contents;
+    } else {
+      binaryFiles[newPath] = binaryFiles.remove(oldPath)!;
+    }
   }
 
   @override

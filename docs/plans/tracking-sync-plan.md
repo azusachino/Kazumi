@@ -151,6 +151,7 @@ was used.
 | Slice | Commit | Expected red | Green evidence |
 | --- | --- | --- | --- |
 | 1 | pending | `mise exec -- flutter test test/tracking/bangumi_import_test.dart` exited 1: compile error, `BangumiImport` had no `ensureBinding` parameter. | Same focused command exited 0: 4 tests passed. |
+| 2 | pending | Focused WebDAV backfill test exited 1: expected binding `41:bangumi`, actual binding set was empty. | `mise exec -- flutter test test/webdav_service_test.dart --plain-name 'collect sync backfills Bangumi bindings idempotently without outbox writes'` exited 0: 1 test passed. |
 
 Device verification: skipped per explicit task scope; no device or real tracker
 account was accessed.

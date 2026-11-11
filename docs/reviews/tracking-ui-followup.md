@@ -143,4 +143,9 @@ blank row; the number dialog used `double.maxFinite`.
   selected value; only 取消/Back were used and no remote status, progress or
   score was written. Screenshots: `.tmp/kazumi-tracking-sync/deepseek-implementation/haru8-drawer-cached.png`,
   `haru8-drawer-refreshed.png`, `haru8-picker.png` (workstation scratch).
-- Phone remains on haru.5; no rebuild or install occurred there.
+- Phone was subsequently updated at the owner's request: OnePlus PLR110,
+  adb `3B66A6009QZ00000`, `adb install -r` exited 0 with `Success` for the
+  same haru.8 APK. Package inspection confirmed `2.4.3-haru.8`, code `20407`,
+  and preserved `firstInstallTime=2026-11-10 20:21:19`. The signing certificate
+  matched the previously verified installed fork. Both devices now have haru.8;
+  phone UI acceptance remains with the owner.

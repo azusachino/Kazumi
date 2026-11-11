@@ -11,6 +11,7 @@ import 'package:kazumi/pages/collect/collect_controller.dart';
 import 'package:kazumi/repositories/collect_crud_repository.dart';
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
 import 'package:kazumi/modules/bangumi/bangumi_item.dart';
+import 'package:kazumi/modules/collect/collect_type.dart';
 import 'package:kazumi/pages/info/anilist_search_page.dart';
 import 'package:kazumi/pages/info/tracking_sheet.dart';
 import 'package:kazumi/pages/settings/sync/bangumi_sync_page.dart';
@@ -285,6 +286,25 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
+  test('a tracker status change also moves the show in the local library', () async {
+    final controller = CollectController(CollectCrudRepository());
+    final item = _item();
+    await controller.addCollectFromTracker(item, CollectType.watching.value);
+    expect(GStorage.collectibles.get(123)?.type, CollectType.watching.value);
+    expect(
+      GStorage.collectChanges.values.where((change) => change.bangumiID == 123),
+      hasLength(1),
+    );
+    expect(GStorage.trackingOutbox.get('123:bangumi'), isNull);
+    expect(GStorage.trackingOutbox.get('123:anilist'), isNull);
+
+    // Re-selecting a status only records the change; it never fans out to a
+    // tracker, because the drawer already wrote the one the owner chose.
+    await controller.addCollectFromTracker(item, CollectType.watched.value);
+    expect(GStorage.collectibles.get(123)?.type, CollectType.watched.value);
+    expect(GStorage.trackingOutbox, isEmpty);
+  });
+
   testWidgets('signed-out state points to account settings', (tester) async {
     await tester.pumpWidget(
       MaterialApp(
@@ -510,7 +530,14 @@ void main() {
       subjectId: 123, trackerId: TrackerId.bangumi, remoteId: '123',
     )));
     GStorage.trackingSync.dispose();
-    await tester.pumpWidget(MaterialApp(home: Material(child: TrackingSheet(item: _item()))));
+    await tester.pumpWidget(MaterialApp(
+      home: Material(
+        child: TrackingSheet(
+          item: _item(),
+          onMirrorStatus: (item, type) async {},
+        ),
+      ),
+    ));
     await tester.pumpAndSettle();
     await tester.tap(find.text('状态'));
     await tester.pumpAndSettle();
@@ -546,7 +573,15 @@ void main() {
       ));
     });
     GStorage.trackingSync.dispose();
-    await tester.pumpWidget(MaterialApp(home: Material(child: TrackingSheet(item: _item()))));
+    final mirrored = <int>[];
+    await tester.pumpWidget(MaterialApp(
+      home: Material(
+        child: TrackingSheet(
+          item: _item(),
+          onMirrorStatus: (item, type) async => mirrored.add(type.value),
+        ),
+      ),
+    ));
     await tester.pumpAndSettle();
 
     expect(find.text('收藏'), findsNothing);
@@ -582,6 +617,14 @@ void main() {
     await tester.pump();
     expect(GStorage.trackingOutbox.get('123:anilist')?.status, TrackStatus.dropped);
     expect(GStorage.trackingOutbox.get('123:bangumi')?.status, TrackStatus.current);
+    // A drawer status change also moves the show in the local library that
+    // 追番 lists; the seam records it because a real write is Hive I/O. The
+    // mirror runs after the awaited tracker enqueue, so let its microtasks run.
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 10)),
+    );
+    await tester.pump();
+    expect(mirrored, [CollectType.watching.value, CollectType.abandoned.value]);
     await tester.pumpWidget(const SizedBox());
   });
 

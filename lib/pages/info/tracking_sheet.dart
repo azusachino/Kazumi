@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -8,6 +9,9 @@ import 'package:kazumi/bean/dialog/adaptive_bottom_sheet.dart';
 import 'package:kazumi/bean/widget/tracker_logo.dart';
 import 'package:kazumi/modules/bangumi/bangumi_item.dart';
 import 'package:kazumi/modules/bangumi/bangumi_title.dart';
+import 'package:kazumi/modules/collect/collect_type.dart';
+import 'package:kazumi/pages/collect/collect_controller.dart';
+import 'package:kazumi/services/logging/logger.dart';
 import 'package:kazumi/pages/info/anilist_search_page.dart';
 import 'package:kazumi/services/storage/storage.dart';
 import 'package:kazumi/services/tracking/models.dart';
@@ -22,15 +26,25 @@ Future<void> showTrackingSheet(BuildContext context, BangumiItem item) =>
     );
 
 class TrackingSheet extends StatefulWidget {
-  const TrackingSheet({super.key, required this.item, this.onRemoveBinding});
+  const TrackingSheet({
+    super.key,
+    required this.item,
+    this.onRemoveBinding,
+    this.onMirrorStatus,
+  });
   final BangumiItem item;
   final Future<void> Function(TrackingBinding binding)? onRemoveBinding;
+
+  /// Test seam: the real mirror is a local Hive write, which cannot run inside
+  /// a widget-test zone. Production leaves this null.
+  final Future<void> Function(BangumiItem item, CollectType type)? onMirrorStatus;
 
   @override
   State<TrackingSheet> createState() => _TrackingSheetState();
 }
 
 class _TrackingSheetState extends State<TrackingSheet> {
+  final _collectController = inject<CollectController>();
   int _revision = 0;
   final Set<String> _reading = {};
   final Set<String> _loaded = {};
@@ -58,6 +72,14 @@ class _TrackingSheetState extends State<TrackingSheet> {
     _readErrors.clear();
     if (mounted) setState(() {});
   }
+
+  CollectType _collectTypeFor(TrackStatus status) => switch (status) {
+    TrackStatus.planning => CollectType.planToWatch,
+    TrackStatus.current => CollectType.watching,
+    TrackStatus.completed => CollectType.watched,
+    TrackStatus.paused => CollectType.onHold,
+    TrackStatus.dropped => CollectType.abandoned,
+  };
 
   String _status(TrackStatus status) => switch (status) {
     TrackStatus.planning => '想看',
@@ -224,13 +246,33 @@ class _TrackingSheetState extends State<TrackingSheet> {
         ),
       ),
     );
-    if (result != null) {
-      await GStorage.trackingSync.enqueue(
-        binding.subjectId,
-        status: result,
-        trackerId: binding.trackerId,
-      );
+    if (result == null) return;
+    await GStorage.trackingSync.enqueue(
+      binding.subjectId,
+      status: result,
+      trackerId: binding.trackerId,
+    );
+    // The drawer writes one tracker; the local library (what 追番 lists) has to
+    // follow, or a show set to 在看 here never appears under 追番 > 在看.
+    final localType = _collectTypeFor(result);
+    if (_collectController.getCollectType(widget.item) == localType.value) {
+      return;
     }
+    final seam = widget.onMirrorStatus;
+    final mirror = seam != null
+        ? seam(widget.item, localType)
+        : _collectController.addCollectFromTracker(
+            widget.item,
+            localType.value,
+          );
+    unawaited(
+      mirror.catchError((Object e) {
+        KazumiLogger().e(
+          'Tracking: failed to mirror status into the library',
+          error: e,
+        );
+      }),
+    );
   }
 
   Future<void> _selectNumber(

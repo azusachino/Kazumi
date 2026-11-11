@@ -55,6 +55,23 @@ abstract class _CollectController with Store {
     }
   }
 
+  /// Mirrors a tracker status into the local library only.
+  ///
+  /// The tracking drawer already enqueued one specific tracker, so this must
+  /// not call [statusChanged]: that would also write the other tracker and
+  /// create bindings the owner did not ask for.
+  Future<void> addCollectFromTracker(BangumiItem bangumiItem, int type) async {
+    if (type == CollectType.none.value) return;
+    final currentCollectType = getCollectType(bangumiItem);
+    await _collectCrudRepository.addCollectible(bangumiItem, type);
+    await GStorage.appendCollectChange(
+      bangumiId: bangumiItem.id,
+      action: currentCollectType == 0 ? 1 : 2,
+      type: type,
+    );
+    loadCollectibles();
+  }
+
   @action
   Future<void> deleteCollect(BangumiItem bangumiItem) async {
     await _collectCrudRepository.deleteCollectible(bangumiItem.id);

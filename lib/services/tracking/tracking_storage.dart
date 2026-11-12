@@ -4,6 +4,7 @@ import 'package:kazumi/services/storage/storage.dart';
 import 'package:kazumi/services/tracking/anilist_binding.dart';
 import 'package:kazumi/services/tracking/bangumi_binding.dart';
 import 'package:kazumi/services/tracking/stores.dart';
+import 'package:kazumi/services/tracking/tracking_features.dart';
 
 /// Fork only: the collect-box writes the tracking features need, kept out of
 /// the shared `storage.dart`. Each runs inside `GStorage`'s collect write
@@ -39,8 +40,9 @@ Future<bool> setCollectTypeIfPresent(int bangumiId, int type) {
 /// merge cannot revert the status the drain just observed.
 ///
 /// No outbox row is created: the remote is the source of this status.
-Future<void> followTrackerStatus(int bangumiId, int type) {
-  return GStorage.runCollectWriteExclusive(() async {
+Future<void> followTrackerStatus(int bangumiId, int type) async {
+  if (!TrackingFeatures.remoteStatusFollow) return;
+  await GStorage.runCollectWriteExclusive(() async {
     final existing = GStorage.collectibles.get(bangumiId);
     if (existing == null || existing.type == type) return;
     existing.type = type;

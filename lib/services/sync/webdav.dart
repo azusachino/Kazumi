@@ -230,7 +230,7 @@ class WebDav implements TrackingWebDavTransport {
       if (GStorage.collectChanges.isNotEmpty) {
         await _updateBox('collectchanges');
       }
-      await _tracking.ensureCollectedBangumiBindings();
+      await ensureCollectedBangumiBindings();
       return;
     }
 
@@ -266,8 +266,8 @@ class WebDav implements TrackingWebDavTransport {
     if (remoteChanges.isNotEmpty || remoteCollectibles.isNotEmpty) {
       await GStorage.patchCollectibles(remoteCollectibles, remoteChanges);
     }
-    await _tracking.ensureCollectedBangumiBindings();
-    await _tracking.enqueueReceivedStatuses();
+    await ensureCollectedBangumiBindings();
+    await enqueueReceivedStatuses();
     await _updateBox('collectibles');
     if (GStorage.collectChanges.isNotEmpty) {
       await _updateBox('collectchanges');

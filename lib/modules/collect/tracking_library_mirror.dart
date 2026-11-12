@@ -2,6 +2,7 @@ import 'package:kazumi/modules/bangumi/bangumi_item.dart';
 import 'package:kazumi/modules/collect/collect_type.dart';
 import 'package:kazumi/repositories/collect_crud_repository.dart';
 import 'package:kazumi/services/storage/storage.dart';
+import 'package:kazumi/services/tracking/tracking_features.dart';
 import 'package:kazumi/services/tracking/tracking_storage.dart';
 
 /// Fork only: the library side of a tracker status change.
@@ -15,6 +16,7 @@ Future<void> mirrorTrackerStatus(
   int type,
   void Function() reload,
 ) async {
+  if (!TrackingFeatures.statusMirror) return;
   if (type == CollectType.none.value) return;
   final currentType = repository.getCollectType(item.id);
   // An existing row keeps its stored item and timestamp; the category is the

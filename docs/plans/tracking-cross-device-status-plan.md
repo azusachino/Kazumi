@@ -152,3 +152,33 @@ response's `updated_at`), `lib/services/tracking/tracking_entry_cache.dart`
   touch a subject the owner did not act on.
 - The merge change sits on the most-travelled sync path; single-device behaviour
   must stay pinned by the existing tests.
+
+## Implementation status
+
+Implemented on `task/tracking-sync`; every slice has its own commit and the
+required gates pass at `2fdc63ca`.
+
+| Slice | Commit | Note |
+| --- | --- | --- |
+| 1 origin field | `aac474ab` | `@HiveField(5, defaultValue: 0)`; adapter diff adds field 5 only, typeId 5 unchanged; the generated read also falls back to 0 for rows without it |
+| 2 propagation records a change | `3c038b15` | category write and `tracker`-origin change in one `_runCollectChangesWriteExclusive` block; the dead, same-named `CollectController.followTrackerStatus` was removed with its test |
+| 3 per-subject LWW | `c1d3af53` | `(id, subject)` identity, `(timestamp, origin, type)` comparison, deletes honoured either way, colliding id reassigned by `patchCollectibles` |
+| 4a tracker edit time | `bf9b560e` | `RemoteEntry.updatedAt` from Bangumi's `updated_at`, persisted in the drawer cache; never fabricated |
+| 4b guarded enqueue | `282d3a6a` | Bangumi only; user-origin winner newer than the recorded `updated_at`, no pending row, a binding exists, category differs |
+| 5 docs | `2fdc63ca` | design and review records rewritten; the two previously recorded decisions are now stated in their superseded form |
+
+Departures from the text above, and why:
+
+1. `setCollectTypeIfPresent` was kept alongside `followTrackerStatus`:
+   `CollectCrudRepository.setCollectType` (the drawer mirror) uses it and appends
+   its own user-origin change, so it is not dead code.
+2. The slice-4 guard runs after the binding backfill rather than straight after
+   `patchCollectibles`, so a first-time binding can enqueue in the same sync.
+3. Slice 4 landed as two commits, matching its own 4a/4b split.
+4. The slice-4 tests swap `GStorage.trackingSync` for a fake-backed instance (a
+   test seam) so no HTTP path runs.
+
+Evidence: `mise exec -- flutter analyze` exit 0 with no issues; full
+`mise exec -- flutter test` exit 0 with 355 passing (339 before). Reproduced by
+the lead on the same tree. Not covered end to end: `Storage.init` wiring of
+`onRemoteStatus`, and no on-device run of this revision.

@@ -64,6 +64,144 @@ void main() {
       expect(mergeResult.changes.map((change) => change.id), [9, 10, 11, 12]);
     });
 
+    test('the newer change wins whichever side it arrives on', () {
+      final newerRemote = CollectSyncMerger.mergeWebDav(
+        localCollectibles: [_collect(1, CollectType.watching)],
+        localChanges: [_change(10, 1, 2, CollectType.watching, 100)],
+        remoteCollectibles: [_collect(1, CollectType.planToWatch)],
+        remoteChanges: [_change(11, 1, 2, CollectType.planToWatch, 200)],
+      );
+      expect(_typesById(newerRemote.collectibles), {
+        1: CollectType.planToWatch.value,
+      });
+
+      final newerLocal = CollectSyncMerger.mergeWebDav(
+        localCollectibles: [_collect(1, CollectType.planToWatch)],
+        localChanges: [_change(11, 1, 2, CollectType.planToWatch, 200)],
+        remoteCollectibles: [_collect(1, CollectType.watching)],
+        remoteChanges: [_change(10, 1, 2, CollectType.watching, 100)],
+      );
+      expect(_typesById(newerLocal.collectibles), {
+        1: CollectType.planToWatch.value,
+      });
+    });
+
+    test('a same-second tie converges to the same winner in both directions',
+        () {
+      final fromA = CollectSyncMerger.mergeWebDav(
+        localCollectibles: [_collect(1, CollectType.watching)],
+        localChanges: [_change(10, 1, 2, CollectType.watching, 100)],
+        remoteCollectibles: [_collect(1, CollectType.planToWatch)],
+        remoteChanges: [_change(20, 1, 2, CollectType.planToWatch, 100)],
+      );
+      final fromB = CollectSyncMerger.mergeWebDav(
+        localCollectibles: [_collect(1, CollectType.planToWatch)],
+        localChanges: [_change(20, 1, 2, CollectType.planToWatch, 100)],
+        remoteCollectibles: [_collect(1, CollectType.watching)],
+        remoteChanges: [_change(10, 1, 2, CollectType.watching, 100)],
+      );
+
+      expect(_typesById(fromA.collectibles), _typesById(fromB.collectibles));
+      expect(
+        fromA.changes.map((change) => change.id).toSet(),
+        fromB.changes.map((change) => change.id).toSet(),
+      );
+      expect(_typesById(fromA.collectibles), {
+        1: CollectType.planToWatch.value,
+      });
+    });
+
+    test('a same-second tie prefers the owner over a tracker echo', () {
+      for (final localIsOwner in [true, false]) {
+        final owner = _change(
+          10,
+          1,
+          2,
+          CollectType.watching,
+          100,
+          origin: CollectChangeOrigin.user,
+        );
+        final echo = _change(
+          20,
+          1,
+          2,
+          CollectType.watched,
+          100,
+          origin: CollectChangeOrigin.tracker,
+        );
+        final result = CollectSyncMerger.mergeWebDav(
+          localCollectibles: [
+            _collect(1, localIsOwner ? CollectType.watching : CollectType.watched),
+          ],
+          localChanges: [localIsOwner ? owner : echo],
+          remoteCollectibles: [
+            _collect(1, localIsOwner ? CollectType.watched : CollectType.watching),
+          ],
+          remoteChanges: [localIsOwner ? echo : owner],
+        );
+
+        expect(_typesById(result.collectibles), {
+          1: CollectType.watching.value,
+        });
+      }
+    });
+
+    test('an id collision between subjects keeps both edits', () {
+      final result = CollectSyncMerger.mergeWebDav(
+        localCollectibles: [_collect(1, CollectType.watching)],
+        localChanges: [_change(10, 1, 2, CollectType.watching, 100)],
+        remoteCollectibles: [_collect(2, CollectType.watched)],
+        remoteChanges: [_change(10, 2, 2, CollectType.watched, 100)],
+      );
+
+      expect(result.changes, hasLength(2));
+      expect(
+        result.changes.map((change) => change.bangumiID).toSet(),
+        {1, 2},
+      );
+      expect(_typesById(result.collectibles), {
+        1: CollectType.watching.value,
+        2: CollectType.watched.value,
+      });
+    });
+
+    test('delete beats an older add and loses to a newer one', () {
+      final deleted = CollectSyncMerger.mergeWebDav(
+        localCollectibles: [_collect(1, CollectType.watching)],
+        localChanges: [_change(10, 1, 1, CollectType.watching, 100)],
+        remoteCollectibles: const [],
+        remoteChanges: [_change(20, 1, 3, CollectType.abandoned, 200)],
+      );
+      expect(deleted.collectibles, isEmpty);
+
+      final readded = CollectSyncMerger.mergeWebDav(
+        localCollectibles: [_collect(1, CollectType.watching)],
+        localChanges: [_change(20, 1, 1, CollectType.watching, 200)],
+        remoteCollectibles: const [],
+        remoteChanges: [_change(10, 1, 3, CollectType.abandoned, 100)],
+      );
+      expect(_typesById(readded.collectibles), {
+        1: CollectType.watching.value,
+      });
+    });
+
+    test('a subject with no change on either side is left untouched', () {
+      final result = CollectSyncMerger.mergeWebDav(
+        localCollectibles: [_collect(1, CollectType.watching)],
+        localChanges: [_change(10, 1, 2, CollectType.watching, 100)],
+        remoteCollectibles: [
+          _collect(5, CollectType.onHold),
+          _collect(1, CollectType.watching),
+        ],
+        remoteChanges: const [],
+      );
+
+      expect(_typesById(result.collectibles), {
+        1: CollectType.watching.value,
+        5: CollectType.onHold.value,
+      });
+    });
+
   });
 
   group('BangumiCollection.fromJson', () {
@@ -190,7 +328,7 @@ void main() {
   });
 }
 
-CollectedBangumi _collect(int id, CollectType type, int timestamp) {
+CollectedBangumi _collect(int id, CollectType type, [int timestamp = 0]) {
   return CollectedBangumi(
     _item(id),
     DateTime.fromMillisecondsSinceEpoch(timestamp * 1000),
@@ -203,14 +341,16 @@ CollectedBangumiChange _change(
   int bangumiId,
   int action,
   CollectType type,
-  int timestamp,
-) {
+  int timestamp, {
+  int origin = CollectChangeOrigin.user,
+}) {
   return CollectedBangumiChange(
     id,
     bangumiId,
     action,
     type.value,
     timestamp,
+    origin: origin,
   );
 }
 

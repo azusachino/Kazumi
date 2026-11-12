@@ -67,6 +67,33 @@ void main() {
     expect(GStorage.collectChanges, isEmpty);
   });
 
+  test('an id minted twice for different subjects keeps both edits', () async {
+    await GStorage.collectibles.put(1, _collect(1, CollectType.watching));
+    await GStorage.collectibles.put(2, _collect(2, CollectType.watching));
+    final local = await GStorage.appendCollectChange(
+      bangumiId: 1,
+      action: 2,
+      type: CollectType.planToWatch.value,
+      timestamp: 100,
+    );
+
+    // The other device minted the same id for a different subject.
+    await GStorage.patchCollectibles(
+      [_collect(2, CollectType.watched)],
+      [CollectedBangumiChange(local.id, 2, 2, CollectType.watched.value, 200)],
+    );
+
+    expect(GStorage.collectibles.get(1)!.type, CollectType.planToWatch.value);
+    expect(GStorage.collectibles.get(2)!.type, CollectType.watched.value);
+    expect(
+      GStorage.collectChanges.values
+          .map((change) => '${change.bangumiID}')
+          .toSet(),
+      {'1', '2'},
+    );
+    expect(GStorage.collectChanges.length, 2);
+  });
+
   test('a propagation never touches a subject the owner did not collect',
       () async {
     await GStorage.followTrackerStatus(44, CollectType.watched.value);

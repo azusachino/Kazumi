@@ -453,7 +453,22 @@ class GStorage {
       await collectibles.flush();
 
       await collectChanges.clear();
+      _collectChangeIdInitialized = false;
+      _initializeNextCollectChangeIdLocked();
       for (var change in mergeResult.changes) {
+        final existing = collectChanges.get(change.id);
+        if (existing != null && existing.bangumiID != change.bangumiID) {
+          // Another device minted this id for a different subject: keep both
+          // edits by moving the incoming one to a fresh local id.
+          change = CollectedBangumiChange(
+            _generateCollectChangeIdLocked(),
+            change.bangumiID,
+            change.action,
+            change.type,
+            change.timestamp,
+            origin: change.origin,
+          );
+        }
         await collectChanges.put(change.id, change);
       }
       await collectChanges.flush();

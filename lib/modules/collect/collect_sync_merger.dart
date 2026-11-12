@@ -11,6 +11,14 @@ class CollectiblesMergeResult {
   final List<CollectedBangumiChange> changes;
 }
 
+/// Merges this device's collect log into a WebDAV copy.
+///
+/// A change is identified by `(id, subject)`, so two devices that minted the
+/// same id for different subjects keep both edits. Per subject the winner is
+/// the greatest `(timestamp, origin, type)`: an owner action outranks a
+/// tracker echo, and a higher category breaks the remaining tie. Both devices
+/// therefore pick the same winner whichever side they merge from, so a tie
+/// converges instead of oscillating.
 class CollectSyncMerger {
   static CollectiblesMergeResult mergeWebDav({
     required List<CollectedBangumi> localCollectibles,
@@ -20,69 +28,77 @@ class CollectSyncMerger {
   }) {
     final mergedCollectibles =
         remoteCollectibles.map(_copyCollectible).toList();
-    final newLocalChanges = localChanges.where((localChange) {
-      return !remoteChanges
-          .any((remoteChange) => remoteChange.id == localChange.id);
-    }).toList()
-      ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+    final localBySubject = {
+      for (final collectible in localCollectibles)
+        collectible.bangumiItem.id: collectible,
+    };
 
-    for (final change in newLocalChanges) {
-      if (change.action == 3) {
-        mergedCollectibles
-            .removeWhere((item) => item.bangumiItem.id == change.bangumiID);
-        continue;
-      }
-
-      final localCollectible = _findCollectible(
-        localCollectibles,
-        change.bangumiID,
-      );
-      if (localCollectible == null) {
-        continue;
-      }
-
-      final changedCollectible = CollectedBangumi(
-        localCollectible.bangumiItem,
-        localCollectible.time,
-        change.type,
-      );
+    for (final winner in _winners([
+      ...remoteChanges,
+      ...localChanges,
+    ]).values) {
       final index = mergedCollectibles.indexWhere(
-        (item) => item.bangumiItem.id == change.bangumiID,
+        (item) => item.bangumiItem.id == winner.bangumiID,
       );
-
-      if (change.action == 1) {
-        if (index == -1) {
-          mergedCollectibles.add(changedCollectible);
-        } else {
-          mergedCollectibles[index] = changedCollectible;
-        }
-      } else if (change.action == 2 && index != -1) {
-        mergedCollectibles[index] = changedCollectible;
+      if (winner.action == 3) {
+        if (index != -1) mergedCollectibles.removeAt(index);
+        continue;
+      }
+      // Only a local collectible can carry a category this device does not
+      // have on the remote side yet.
+      final source = localBySubject[winner.bangumiID] ??
+          (index == -1 ? null : mergedCollectibles[index]);
+      if (source == null) continue;
+      final changed = CollectedBangumi(
+        source.bangumiItem,
+        source.time,
+        winner.type,
+      );
+      if (index == -1) {
+        mergedCollectibles.add(changed);
+      } else {
+        mergedCollectibles[index] = changed;
       }
     }
 
-    final mergedChanges = <int, CollectedBangumiChange>{
-      for (final change in remoteChanges) change.id: change,
-      for (final change in newLocalChanges) change.id: change,
-    }.values.toList();
+    final mergedChanges = <String, CollectedBangumiChange>{
+      for (final change in remoteChanges) _key(change): change,
+      for (final change in localChanges) _key(change): change,
+    };
 
     return CollectiblesMergeResult(
       collectibles: mergedCollectibles,
-      changes: mergedChanges,
+      changes: mergedChanges.values.toList(),
     );
   }
 
-  static CollectedBangumi? _findCollectible(
-    List<CollectedBangumi> collectibles,
-    int bangumiId,
+  /// The winning change per subject.
+  static Map<int, CollectedBangumiChange> _winners(
+    Iterable<CollectedBangumiChange> changes,
   ) {
-    for (final collectible in collectibles) {
-      if (collectible.bangumiItem.id == bangumiId) {
-        return collectible;
+    final winners = <int, CollectedBangumiChange>{};
+    for (final change in changes) {
+      final current = winners[change.bangumiID];
+      if (current == null || _compare(change, current) > 0) {
+        winners[change.bangumiID] = change;
       }
     }
-    return null;
+    return winners;
   }
+
+  static int _compare(CollectedBangumiChange a, CollectedBangumiChange b) {
+    final byTime = a.timestamp.compareTo(b.timestamp);
+    if (byTime != 0) return byTime;
+    final byOrigin = _originRank(a).compareTo(_originRank(b));
+    if (byOrigin != 0) return byOrigin;
+    return a.type.compareTo(b.type);
+  }
+
+  static int _originRank(CollectedBangumiChange change) =>
+      change.origin == CollectChangeOrigin.user ? 1 : 0;
+
+  static String _key(CollectedBangumiChange change) =>
+      '${change.id}\u0000${change.bangumiID}';
 
   static CollectedBangumi _copyCollectible(CollectedBangumi collectible) {
     return CollectedBangumi(

@@ -138,3 +138,21 @@ New file: `lib/services/tracking/tracking_features.dart` (fork-only).
   to the four operations the exchange actually uses.
 - Flags multiply test combinations; four flags with one off-test each is the
   limit, and each off-test asserts only its own seam.
+
+## Measured after (2026-11-13, `origin/main...HEAD`)
+
+Same measurement as the baseline, after slices 1-5. Every row is at or below
+its target; `git diff --numstat origin/main...HEAD -- <file>` reproduces it.
+
+| Shared file | Now | Target | After |
+| --- | --- | --- | --- |
+| `lib/services/sync/webdav.dart` | +200 −3 | ≤ +30 | +26 −3 |
+| `lib/modules/collect/collect_sync_merger.dart` | +76 −47 | ≤ +15 | +10 −70 |
+| `lib/services/storage/storage.dart` | +110 −14 | ≤ +25 | +24 −4 |
+| `lib/modules/collect/collect_type_mapper.dart` | +31 −0 | 0 | 0 |
+| `lib/pages/collect/collect_controller.dart` | +21 −0 | ≤ +5 | +4 −0 |
+| `lib/repositories/collect_crud_repository.dart` | +21 −0 | ≤ +5 | 0 |
+| `lib/main.dart` | +16 −0 | ≤ +4 | +4 −0 |
+| `lib/bean/widget/collect_button.dart` | +21 −48 | ≤ +10 | +9 −66 |
+
+Suite: 355 tests before, 359 after (the four flag off-tests). Both gates exit 0.

@@ -430,3 +430,46 @@ default to the `kazumi://` URIs.
 
 Comments, notes, start/finish dates, private flag, other trackers, syncing
 the outbox across devices.
+
+## Where fork code lives
+
+Fork logic lives in a fork-only file; a shared upstream file keeps at most a
+delegation line. That is what keeps the next merge from upstream cheap, and it
+keeps this fork reviewable one file at a time.
+
+| Shared file | The fork's remaining footprint |
+| --- | --- |
+| `lib/services/sync/webdav.dart` | the `TrackingWebDavTransport` implementation, three calls into the exchange |
+| `lib/modules/collect/collect_sync_merger.dart` | `mergeWebDav` returns `mergeCollectChanges(...)` |
+| `lib/services/storage/storage.dart` | two box fields, the entry-cache wiring, the `onRemoteStatus` line, the collect write block and id generator the fork helpers use |
+| `lib/pages/collect/collect_controller.dart` | `addCollectFromTracker` delegates |
+| `lib/main.dart` | two calls: the license hook and `KazumiTrackingStartup.run()` |
+| `lib/bean/widget/collect_button.dart` | the widget and its constructors; `build` delegates |
+
+Fork-only homes:
+
+| Fork logic | File |
+| --- | --- |
+| WebDAV tracking exchange and its collect-side hooks | `lib/services/sync/tracking_webdav_exchange.dart` |
+| the collect merge decision | `lib/modules/collect/collect_change_merge.dart` |
+| collect-box writes, the id-collision rekey, binding-manager wiring | `lib/services/tracking/tracking_storage.dart` |
+| `TrackStatus` ↔ `CollectType` | `lib/modules/collect/tracking_collect_type.dart` |
+| the library side of a tracker status change | `lib/modules/collect/tracking_library_mirror.dart` |
+| the startup binding backfill | `lib/services/tracking/tracking_startup.dart` |
+| the tracking button | `lib/bean/widget/tracking_entry_button.dart` |
+| the flags | `lib/services/tracking/tracking_features.dart` |
+
+### Flags
+
+One settings key, `trackingFeatureFlags`, holds a map of flags. An absent key
+or an absent flag means enabled, so a device turns a seam off without reverting
+code, and a bad merge shows up as a flag default rather than a silent behaviour
+change. Each seam reads its flag with one synchronous call; nothing subscribes.
+There is no settings UI: the map is written in the settings box.
+
+| Flag | Guards | Default |
+| --- | --- | --- |
+| `bindingsOnSync` | binding creation after Bangumi import, WebDAV apply and startup backfill | on |
+| `statusMirror` | the drawer's status change writing the local category | on |
+| `remoteStatusFollow` | the drain writing a Bangumi status into the library | on |
+| `writeBackOnSync` | a received category enqueuing a Bangumi delta | on |

@@ -140,10 +140,8 @@ class CollectCrudRepository implements ICollectCrudRepository {
   @override
   Future<bool> setCollectType(int id, int type) async {
     try {
-      final collectible = _collectiblesBox.get(id);
-      if (collectible == null) return false;
-      collectible.type = type;
-      await GStorage.putCollectible(collectible);
+      if (_collectiblesBox.get(id) == null) return false;
+      await GStorage.setCollectTypeIfPresent(id, type);
       return true;
     } catch (e, stackTrace) {
       KazumiLogger().e(

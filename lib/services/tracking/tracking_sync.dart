@@ -29,6 +29,7 @@ class TrackingSync {
     Future<void> Function(Duration)? delay,
     TrackingSchedule? schedule,
     this.cache,
+    this.onRemoteStatus,
   }) : trackers = {for (final tracker in trackers) tracker.id: tracker},
        clock = clock ?? DateTime.now,
        delay = delay ?? Future<void>.delayed,
@@ -42,6 +43,12 @@ class TrackingSync {
   final Future<void> Function(Duration) delay;
   final TrackingSchedule schedule;
   final TrackingEntryCache? cache;
+
+  /// Receives the status a successful Bangumi drain left on the tracker, so
+  /// the library can follow its canonical source. Bangumi only: an AniList
+  /// entry is a manual secondary match and never drives the local category.
+  final Future<void> Function(int subjectId, TrackStatus status)?
+  onRemoteStatus;
   final Map<TrackerId, DateTime> _lastCall = {};
   final Map<TrackerId, DateTime> _pausedUntil = {};
   Future<void> _queue = Future.value();
@@ -270,6 +277,7 @@ class TrackingSync {
           await outbox.delete(key);
         }
       });
+      await _propagate(tracker.id, row.subjectId, effective.status);
     } on _BindingChanged {
       await _dropIfUnchanged(row);
     } on TrackerException catch (e) {
@@ -278,6 +286,25 @@ class TrackingSync {
       // Exception text and stack traces may contain credentials or headers.
       KazumiLogger().e('Tracking: unexpected ${tracker.id.name} sync error');
       await _handleFailure(tracker.id, row, const TrackerServerException());
+    }
+  }
+
+  Future<void> _propagate(
+    TrackerId id,
+    int subjectId,
+    TrackStatus status,
+  ) async {
+    final callback = onRemoteStatus;
+    if (callback == null || id != TrackerId.bangumi) return;
+    try {
+      // A queued local edit is never reverted by a remote read.
+      final pending = await _exclusive(
+        () async => (await outbox.all()).any((row) => row.subjectId == subjectId),
+      );
+      if (!pending) await callback(subjectId, status);
+    } catch (_) {
+      // A library write must never fail the drain.
+      KazumiLogger().w('Tracking: failed to propagate ${id.name} status');
     }
   }
 

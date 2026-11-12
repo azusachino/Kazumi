@@ -92,6 +92,7 @@ class Harness {
   final outbox = MemoryOutbox();
   final a = FakeTracker(TrackerId.bangumi);
   final b = FakeTracker(TrackerId.anilist);
+  final propagated = <(int, TrackStatus)>[];
   DateTime now = DateTime.utc(2026);
   late final TrackingSync sync = TrackingSync(
     bindings: bindings,
@@ -104,6 +105,8 @@ class Harness {
     },
     schedule: (_, _) => () {},
     cache: cache,
+    onRemoteStatus: (subject, status) async =>
+        propagated.add((subject, status)),
   );
   Future<void> bind({
     TrackerId id = TrackerId.bangumi,
@@ -405,6 +408,57 @@ void main() {
     );
     await h.sync.drain();
     expect(h.outbox.rows, isEmpty);
+  });
+
+  test('a Bangumi drain moves the library to the remote status', () async {
+    await h.bind();
+    h.a.remote = const RemoteEntry(
+      progress: 0,
+      status: TrackStatus.completed,
+    );
+
+    await h.enqueue(progress: 5);
+
+    expect(h.outbox.rows, isEmpty);
+    expect(h.propagated, [(1, TrackStatus.completed)]);
+  });
+
+  test('a failed drain propagates nothing', () async {
+    await h.bind();
+    h.a.failure = const TrackerNetworkException();
+
+    await h.enqueue(status: TrackStatus.current);
+
+    expect(h.outbox.rows, isNotEmpty);
+    expect(h.propagated, isEmpty);
+  });
+
+  test('an AniList drain never drives the library category', () async {
+    await h.bind(id: TrackerId.anilist, remote: 'a');
+    h.b.remote = const RemoteEntry(
+      progress: 0,
+      status: TrackStatus.completed,
+    );
+
+    await h.enqueue(progress: 5);
+
+    expect(h.b.calls, isNotEmpty);
+    expect(h.propagated, isEmpty);
+  });
+
+  test('a pending row for the subject blocks propagation', () async {
+    await h.bind();
+    await h.bind(id: TrackerId.anilist, remote: 'a');
+    h.a.remote = const RemoteEntry(
+      progress: 0,
+      status: TrackStatus.completed,
+    );
+    h.b.failure = const TrackerNetworkException();
+
+    await h.enqueue(progress: 5);
+
+    expect(h.outbox.rows.length, 1);
+    expect(h.propagated, isEmpty);
   });
 
   test('a successful drain refreshes the entry cache before clearing the row', () async {

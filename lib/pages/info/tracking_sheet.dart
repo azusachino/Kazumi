@@ -11,6 +11,7 @@ import 'package:kazumi/bean/widget/tracker_logo.dart';
 import 'package:kazumi/modules/bangumi/bangumi_item.dart';
 import 'package:kazumi/modules/bangumi/bangumi_title.dart';
 import 'package:kazumi/modules/collect/collect_type.dart';
+import 'package:kazumi/modules/collect/collect_type_mapper.dart';
 import 'package:kazumi/pages/collect/collect_controller.dart';
 import 'package:kazumi/services/logging/logger.dart';
 import 'package:kazumi/pages/info/anilist_search_page.dart';
@@ -39,6 +40,7 @@ class TrackingSheet extends StatefulWidget {
   /// Test seam: the real mirror is a local Hive write, which cannot run inside
   /// a widget-test zone. Production leaves this null.
   final Future<void> Function(BangumiItem item, CollectType type)? onMirrorStatus;
+
 
   @override
   State<TrackingSheet> createState() => _TrackingSheetState();
@@ -73,14 +75,6 @@ class _TrackingSheetState extends State<TrackingSheet> {
     _readErrors.clear();
     if (mounted) setState(() {});
   }
-
-  CollectType _collectTypeFor(TrackStatus status) => switch (status) {
-    TrackStatus.planning => CollectType.planToWatch,
-    TrackStatus.current => CollectType.watching,
-    TrackStatus.completed => CollectType.watched,
-    TrackStatus.paused => CollectType.onHold,
-    TrackStatus.dropped => CollectType.abandoned,
-  };
 
   String _status(TrackStatus status) => switch (status) {
     TrackStatus.planning => '想看',
@@ -144,6 +138,7 @@ class _TrackingSheetState extends State<TrackingSheet> {
       if (mounted && revision != _revision) setState(() {});
     }
   }
+
 
   Future<void> _remove(TrackingBinding binding) async {
     final remove = await showDialog<bool>(
@@ -255,7 +250,7 @@ class _TrackingSheetState extends State<TrackingSheet> {
     );
     // The drawer writes one tracker; the local library (what 追番 lists) has to
     // follow, or a show set to 在看 here never appears under 追番 > 在看.
-    final localType = _collectTypeFor(result);
+    final localType = result.toCollectType();
     if (_collectController.getCollectType(widget.item) == localType.value) {
       return;
     }

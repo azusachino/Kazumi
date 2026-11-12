@@ -8,6 +8,7 @@ import 'package:kazumi/hive_registrar.g.dart';
 import 'package:kazumi/modules/history/history_module.dart';
 import 'package:kazumi/modules/collect/collect_module.dart';
 import 'package:kazumi/modules/collect/collect_change_module.dart';
+import 'package:kazumi/modules/collect/collect_type_mapper.dart';
 import 'package:kazumi/modules/collect/collect_sync_merger.dart';
 import 'package:kazumi/modules/search/search_history_module.dart';
 import 'package:kazumi/modules/download/download_module.dart';
@@ -167,6 +168,18 @@ class GStorage {
     });
   }
 
+  /// Rewrites only the category of an existing row, keeping its item and
+  /// timestamp; a subject that is not collected is left alone.
+  static Future<void> setCollectTypeIfPresent(int bangumiId, int type) {
+    return _runCollectChangesWriteExclusive(() async {
+      final existing = collectibles.get(bangumiId);
+      if (existing == null || existing.type == type) return;
+      existing.type = type;
+      await collectibles.put(bangumiId, existing);
+      await collectibles.flush();
+    });
+  }
+
   /// Delete a collectible using the shared collect write queue.
   static Future<void> deleteCollectible(int bangumiId) {
     return _runCollectChangesWriteExclusive(() async {
@@ -222,6 +235,10 @@ class GStorage {
             ? bangumiAccount.username
             : anilistAccount.username,
       ),
+      // A status set on bgm.tv or on another device reaches 追番 through the
+      // same in-place write, without an outbox row or a collect change.
+      onRemoteStatus: (subjectId, status) =>
+          setCollectTypeIfPresent(subjectId, status.toCollectType().value),
     );
     bangumiBindingManager = BangumiBindingManager(
       bangumiAccount,

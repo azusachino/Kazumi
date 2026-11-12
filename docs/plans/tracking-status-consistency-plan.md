@@ -94,8 +94,14 @@ calls), `lib/services/storage/storage.dart`, `lib/pages/info/tracking_sheet.dart
   - Do this behind an injected callback so `TrackingSync` does not import the
     library directly and stays unit-testable with fakes.
   - Bangumi only. AniList rows never drive the local category.
-- Apply the same rule when the drawer's own read refreshes a Bangumi row, so an
-  edit made on the web shows up the next time the drawer opens.
+- ~~Apply the same rule when the drawer's own read refreshes a Bangumi row.~~
+  Dropped during implementation: the drawer's read runs in the widget path, so
+  awaiting a library write there parks on Hive I/O in the widget-test
+  fake-async zone and hangs the suite (the same trap as the removal and mirror
+  writes). The drain covers the case instead: a status edited on bgm.tv or on
+  another device reaches 追番 on the next drain — app start, or after any local
+  status/progress enqueue. The drawer itself always shows the tracker's true
+  status, so nothing is hidden in the meantime.
 - Skip entirely when a pending/outbox row exists for the subject (decision 3),
   and skip when the mapping is unchanged.
 - Tests: remote 看过 with no pending row moves the library category; remote

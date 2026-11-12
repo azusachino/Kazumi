@@ -173,6 +173,7 @@ class BangumiTracker implements Tracker {
       status: _statusFromBangumi((data['type'] as num).toInt()),
       score: rate == 0 ? null : rate * 10,
       total: (subject?['eps'] as num?)?.toInt(),
+      updatedAt: DateTime.tryParse((data['updated_at'] as String?) ?? ''),
     );
   }
 

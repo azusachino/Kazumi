@@ -261,6 +261,9 @@ class TrackingSync {
         status: statusDelta ?? remote?.status ?? status ?? TrackStatus.current,
         score: scoreDelta ?? remote?.score,
         total: total,
+        // The tracker's own edit time from this read. A write returns no new
+        // one, and inventing one would hide a stale local change.
+        updatedAt: remote?.updatedAt,
       );
       await _exclusive(() async {
         final currentBinding = await bindings.get(key);

@@ -30,6 +30,7 @@ class TrackingEntrySnapshot {
             'status': entry!.status.name,
             'score': entry!.score,
             'total': entry!.total,
+            'updatedAt': entry!.updatedAt?.toUtc().toIso8601String(),
           },
     'fetchedAt': fetchedAt.toUtc().toIso8601String(),
   };
@@ -48,10 +49,12 @@ class TrackingEntrySnapshot {
       final statusName = rawEntry['status'];
       final score = rawEntry['score'];
       final total = rawEntry['total'];
+      final updatedAt = rawEntry['updatedAt'];
       if (progress is! int ||
           statusName is! String ||
           (score != null && score is! int) ||
-          (total != null && total is! int)) {
+          (total != null && total is! int) ||
+          (updatedAt != null && updatedAt is! String)) {
         return null;
       }
       final status = TrackStatus.values.asNameMap()[statusName];
@@ -61,6 +64,7 @@ class TrackingEntrySnapshot {
         status: status,
         score: score as int?,
         total: total as int?,
+        updatedAt: updatedAt == null ? null : DateTime.tryParse(updatedAt),
       );
     }
     return TrackingEntrySnapshot(entry: entry, fetchedAt: parsedAt);

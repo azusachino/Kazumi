@@ -40,6 +40,29 @@ void main() {
     expect(cache.get(binding)!.entry, isNull);
   });
 
+  test('a persisted snapshot keeps the tracker updated_at', () async {
+    final dir = await Directory.systemTemp.createTemp('kazumi-entry-cache');
+    addTearDown(() => dir.delete(recursive: true));
+    Hive.init(dir.path);
+    final box = await Hive.openBox<String>('trackingEntryCache_updated_at');
+    addTearDown(box.close);
+    final updatedAt = DateTime.utc(2026, 5, 4, 3, 2, 1);
+
+    await TrackingEntryCache(box: box).put(
+      binding,
+      RemoteEntry(
+        progress: 3,
+        status: TrackStatus.current,
+        updatedAt: updatedAt,
+      ),
+      at,
+    );
+
+    final reopened = TrackingEntryCache(box: box);
+    expect(reopened.get(binding)?.entry?.status, TrackStatus.current);
+    expect(reopened.get(binding)?.entry?.updatedAt, updatedAt);
+  });
+
   test('corrupt persisted snapshots read as a miss instead of failing', () async {
     final dir = await Directory.systemTemp.createTemp('kazumi-entry-cache');
     addTearDown(() => dir.delete(recursive: true));

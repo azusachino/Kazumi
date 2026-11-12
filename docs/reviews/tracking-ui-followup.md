@@ -233,35 +233,39 @@ Verification:
   `mise exec -- flutter test` exit 0, 332 passed.
 - Self-review only.
 
-### Audit: known gaps in the mirror
+### Status consistency follow-up (haru.11)
 
-Checked against the code it touches; none of these block the reported behaviour,
-but they are the limits a later reader should know.
+Plan: `docs/plans/tracking-status-consistency-plan.md`. What changed since the
+audit:
 
-- **Silent local failure.** The mirror is fire-and-forget, so a failed local
-  write is logged only. The drawer then shows the tracker's new status while the
-  追番 list keeps the old category until the next attempt. Surfacing it would
-  need a toast path the sheet does not have.
-- **The library row is rewritten from the sheet's item.** `addCollectible`
-  stores a new `CollectedBangumi` (item, timestamp, type), so mirroring resets
-  the entry's timestamp and copies the info-page item over the stored one. This
-  matches every other collect write, but a partial info-page item would replace
-  a richer stored row.
-- **Direction is asymmetric.** From 追番, `statusChanged` enqueues without a
-  tracker id, so both bound trackers follow. From the drawer, only the row the
-  owner touched is written. Setting 在看 on the AniList row therefore leaves
-  Bangumi at its previous status; this is deliberate for an explicit
-  per-tracker action, not an oversight.
-- **No removal from the drawer.** Deletion stays in the 追番 screens; the drawer
-  only sets categories.
-- **Tracker-side edits do not move the library.** A status changed on bgm.tv,
-  on AniList, or on another device never writes this device's local category;
-  the 追番 list only follows local writes and mirrored drawer edits.
-- **A drained failure still leaves local ahead.** `enqueue` succeeds locally
-  even when the later tracker write fails, so local says 在看 while the tracker
-  keeps 想看 until the outbox retries; the drawer already shows that pending or
-  failed row.
-- **Coverage split.** The widget test exercises the `onMirrorStatus` seam, not
-  the real write; `CollectController.addCollectFromTracker` is covered by its
-  own unit test. No test drives the real Hive write through a widget tap, by
-  design (that combination deadlocks in the fake-async zone).
+- **Fixed: the row was rewritten wholesale.** `setCollectType` / the repository
+  path rewrites only `type`; the stored item and its timestamp survive a
+  category change.
+- **Fixed: a failed mirror was silent.** The drawer keeps the tracker write and
+  shows `本地追番状态未更新，追踪状态已保存`.
+- **Fixed: a tracker-side edit never reached 追番.** A successful Bangumi drain
+  now mirrors its status into the local category when no local edit is queued,
+  writing no outbox row and no collect change. AniList never drives the library.
+- **Dropped, deliberately:** doing the same from the drawer's own read. A
+  library write awaited in that path parks on Hive I/O in the widget-test
+  fake-async zone and hangs the suite; the drain owns propagation instead, so a
+  web-side edit lands on the next app start or after any local enqueue. The
+  drawer row itself always shows the tracker's true status.
+- **Dropped, deliberately:** making a drawer change fan out to the other
+  tracker. 追番 still writes every bound tracker; the drawer writes the row the
+  owner touched. Fanning out would overwrite a status set on purpose.
+
+Still true, unchanged:
+
+- A drained failure leaves the local category ahead of the tracker until the
+  outbox retries. That is the existing optimistic local-first model; the drawer
+  shows the pending or failed row.
+- Nothing new is enqueued on success, and the WebDAV payload is untouched.
+- AniList edits never move the library.
+- The widget tests exercise seams (`onMirrorStatus`, `onRemoveBinding`), not
+  real Hive writes; the controller and the sync layer are covered by plain
+  tests.
+
+Gates at this revision: plain `mise exec -- flutter analyze` exit 0, no issues;
+full `mise exec -- flutter test` exit 0, 339 passed. Deviations and their
+reasons are recorded in the plan. Self-review only.

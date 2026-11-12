@@ -337,3 +337,30 @@ Evidence at this revision (`task/tracking-sync`):
 Not covered: the live wiring `Storage.init` → `onRemoteStatus` is not exercised
 end to end by a test (the callback body is, and the drain's call to it is), and
 no device has run this build yet.
+
+## State at `4a84fd00` (evening handoff)
+
+Branch `task/tracking-sync`, PR #2, tree clean. Everything below is committed and
+pushed; nothing is merged, tagged or released.
+
+- Behaviour reference: `docs/design/tracking.md` ("Watch status across stores and
+  devices", "Where fork code lives").
+- Plans with implementation tables and departures: `tracking-sync-plan.md`,
+  `tracking-status-consistency-plan.md`, `tracking-cross-device-status-plan.md`,
+  `fork-isolation-and-flags-plan.md`.
+- Gates on this tree: plain `flutter analyze` exit 0; full `flutter test` exit 0
+  with 359 passing, reproduced by the lead.
+- Builds: `2.4.3-haru.13` (20412) built, not installed. The pad is on `haru.10`
+  (20409) and the phone on `haru.9` (20408), so neither runs the cross-device
+  work, the isolation refactor or the flags yet.
+- Open, in the order they matter:
+  1. Install `haru.13` on both devices and walk the journey: set a status on
+     bgm.tv, open the app, confirm 追番 follows after the startup drain; set a
+     status in the drawer and confirm 追番 lists it; on two devices, one edit
+     each, confirm they converge instead of fighting.
+  2. `Storage.init` → `onRemoteStatus` is unit-tested only, never exercised by an
+     app-level run.
+  3. The `updated_at` guard is inert until a read has cached it, so the first
+     sync after a fresh install writes nothing back.
+  4. No settings UI for the four flags; they are reachable only by writing the
+     `trackingFeatureFlags` map.

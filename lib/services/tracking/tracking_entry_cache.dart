@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:hive_ce/hive.dart';
 import 'package:kazumi/services/logging/logger.dart';
 
+import 'anilist_account.dart';
+import 'bangumi_account.dart';
 import 'models.dart';
 import 'tracker.dart';
 
@@ -82,6 +84,18 @@ class TrackingEntrySnapshot {
 /// display cache, not account state.
 class TrackingEntryCache {
   TrackingEntryCache({this.accountScope, Box<String>? box}) : _box = box;
+
+  /// The cache `GStorage.init` wires, scoped by each tracker's username.
+  factory TrackingEntryCache.forAccounts(
+    Box<String>? box,
+    BangumiAccount bangumi,
+    AniListAccount anilist,
+  ) =>
+      TrackingEntryCache(
+        box: box,
+        accountScope: (id) =>
+            id == TrackerId.bangumi ? bangumi.username : anilist.username,
+      );
 
   /// Account identity (the tracker username), never a token.
   final String? Function(TrackerId tracker)? accountScope;

@@ -1,4 +1,5 @@
 import 'package:kazumi/services/storage/storage.dart';
+import 'package:kazumi/services/tracking/tracking_storage.dart';
 import 'package:kazumi/modules/bangumi/bangumi_item.dart';
 import 'package:kazumi/modules/collect/collect_module.dart';
 import 'package:kazumi/modules/collect/collect_change_module.dart';
@@ -141,7 +142,7 @@ class CollectCrudRepository implements ICollectCrudRepository {
   Future<bool> setCollectType(int id, int type) async {
     try {
       if (_collectiblesBox.get(id) == null) return false;
-      await GStorage.setCollectTypeIfPresent(id, type);
+      await setCollectTypeIfPresent(id, type);
       return true;
     } catch (e, stackTrace) {
       KazumiLogger().e(

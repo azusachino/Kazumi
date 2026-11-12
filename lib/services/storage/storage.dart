@@ -24,6 +24,7 @@ import 'package:kazumi/services/tracking/tracker.dart';
 import 'package:kazumi/services/tracking/models.dart';
 import 'package:kazumi/services/tracking/stores.dart';
 import 'package:kazumi/services/tracking/tracking_entry_cache.dart';
+import 'package:kazumi/services/tracking/tracking_storage.dart';
 import 'package:kazumi/services/tracking/tracking_sync.dart';
 
 import 'package:kazumi/services/storage/settings_keys.dart';
@@ -101,7 +102,7 @@ class GStorage {
   }
 
   /// Generate id for collect change
-  static int _generateCollectChangeIdLocked() {
+  static int generateCollectChangeIdLocked() {
     _initializeNextCollectChangeIdLocked();
 
     final currentSeconds = DateTime.now().millisecondsSinceEpoch ~/ 1000;
@@ -124,37 +125,24 @@ class GStorage {
     int? timestamp,
     int origin = CollectChangeOrigin.user,
   }) {
-    return _runCollectChangesWriteExclusive(
-      () => _appendCollectChangeLocked(
-        bangumiId: bangumiId,
-        action: action,
-        type: type,
-        timestamp: timestamp,
+    return _runCollectChangesWriteExclusive(() async {
+      final change = CollectedBangumiChange(
+        generateCollectChangeIdLocked(),
+        bangumiId,
+        action,
+        type,
+        timestamp ?? (DateTime.now().millisecondsSinceEpoch ~/ 1000),
         origin: origin,
-      ),
-    );
+      );
+      await collectChanges.put(change.id, change);
+      await collectChanges.flush();
+      return change;
+    });
   }
 
-  /// Appends a change inside an already held collect write block.
-  static Future<CollectedBangumiChange> _appendCollectChangeLocked({
-    required int bangumiId,
-    required int action,
-    required int type,
-    int? timestamp,
-    int origin = CollectChangeOrigin.user,
-  }) async {
-    final change = CollectedBangumiChange(
-      _generateCollectChangeIdLocked(),
-      bangumiId,
-      action,
-      type,
-      timestamp ?? (DateTime.now().millisecondsSinceEpoch ~/ 1000),
-      origin: origin,
-    );
-    await collectChanges.put(change.id, change);
-    await collectChanges.flush();
-    return change;
-  }
+  /// Runs [action] inside the collect write block, for fork-only helpers.
+  static Future<T> runCollectWriteExclusive<T>(Future<T> Function() action) =>
+      _runCollectChangesWriteExclusive(action);
 
   /// Update an existing collect change
   static Future<void> putCollectChange(CollectedBangumiChange change) {
@@ -187,39 +175,6 @@ class GStorage {
     });
   }
 
-  /// Rewrites only the category of an existing row, keeping its item and
-  /// timestamp; a subject that is not collected is left alone.
-  static Future<void> setCollectTypeIfPresent(int bangumiId, int type) {
-    return _runCollectChangesWriteExclusive(() async {
-      final existing = collectibles.get(bangumiId);
-      if (existing == null || existing.type == type) return;
-      existing.type = type;
-      await collectibles.put(bangumiId, existing);
-      await collectibles.flush();
-    });
-  }
-
-  /// Follows a status the tracker already holds: the category rewrite and its
-  /// `tracker`-origin change land in one write block, so the next collectibles
-  /// merge cannot revert the status the drain just observed.
-  ///
-  /// No outbox row is created: the remote is the source of this status.
-  static Future<void> followTrackerStatus(int bangumiId, int type) {
-    return _runCollectChangesWriteExclusive(() async {
-      final existing = collectibles.get(bangumiId);
-      if (existing == null || existing.type == type) return;
-      existing.type = type;
-      await collectibles.put(bangumiId, existing);
-      await collectibles.flush();
-      await _appendCollectChangeLocked(
-        bangumiId: bangumiId,
-        action: 2,
-        type: type,
-        origin: CollectChangeOrigin.tracker,
-      );
-    });
-  }
-
   /// Delete a collectible using the shared collect write queue.
   static Future<void> deleteCollectible(int bangumiId) {
     return _runCollectChangesWriteExclusive(() async {
@@ -246,9 +201,7 @@ class GStorage {
     trackingBindings = await _openBoxSafe<TrackingBinding>('trackingBindings');
     trackingTombstones = await _openBoxSafe<int>('trackingTombstones');
     trackingOutbox = await _openBoxSafe<OutboxEntry>('trackingOutbox');
-    final trackingEntryCacheBox = await _openBoxSafe<String>(
-      'trackingEntryCache',
-    );
+    final cacheBox = await _openBoxSafe<String>('trackingEntryCache');
     final tracker = BangumiTracker();
     final anilistTracker = AniListTracker();
     final bindings = HiveBindingStore(trackingBindings);
@@ -269,30 +222,13 @@ class GStorage {
       trackers: [tracker, anilistTracker],
       tokenProvider: (id) => id == TrackerId.bangumi
           ? bangumiAccount.validToken() : anilistAccount.validToken(),
-      cache: trackingEntryCache = TrackingEntryCache(
-        box: trackingEntryCacheBox,
-        accountScope: (id) => id == TrackerId.bangumi
-            ? bangumiAccount.username
-            : anilistAccount.username,
-      ),
-      // A status set on bgm.tv or on another device reaches 追番 through the
-      // same in-place write, recording a tracker-origin change so the next
-      // WebDAV merge keeps it.
+      cache: trackingEntryCache = TrackingEntryCache.forAccounts(
+          cacheBox, bangumiAccount, anilistAccount),
+      // A status set on bgm.tv or on another device reaches 追番 here.
       onRemoteStatus: (subjectId, status) =>
           followTrackerStatus(subjectId, status.toCollectType().value),
     );
-    bangumiBindingManager = BangumiBindingManager(
-      bangumiAccount,
-      bindings,
-      trackingSync,
-      tombstones: trackingTombstones,
-    );
-    anilistBindingManager = AniListBindingManager(
-      anilistAccount,
-      bindings,
-      trackingSync,
-      tombstones: trackingTombstones,
-    );
+    wireTrackingManagers(bindings);
     if (Platform.isIOS) {
       await rebaseIosDownloadPaths(downloads);
     }
@@ -456,19 +392,7 @@ class GStorage {
       _collectChangeIdInitialized = false;
       _initializeNextCollectChangeIdLocked();
       for (var change in mergeResult.changes) {
-        final existing = collectChanges.get(change.id);
-        if (existing != null && existing.bangumiID != change.bangumiID) {
-          // Another device minted this id for a different subject: keep both
-          // edits by moving the incoming one to a fresh local id.
-          change = CollectedBangumiChange(
-            _generateCollectChangeIdLocked(),
-            change.bangumiID,
-            change.action,
-            change.type,
-            change.timestamp,
-            origin: change.origin,
-          );
-        }
+        change = rekeyCollidingCollectChange(change);
         await collectChanges.put(change.id, change);
       }
       await collectChanges.flush();

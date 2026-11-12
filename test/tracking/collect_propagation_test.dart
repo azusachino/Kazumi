@@ -8,6 +8,7 @@ import 'package:kazumi/modules/collect/collect_change_module.dart';
 import 'package:kazumi/modules/collect/collect_module.dart';
 import 'package:kazumi/modules/collect/collect_type.dart';
 import 'package:kazumi/services/storage/storage.dart';
+import 'package:kazumi/services/tracking/tracking_storage.dart';
 import 'package:logger/logger.dart';
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
 
@@ -39,7 +40,7 @@ void main() {
   test('a propagated tracker status survives the next WebDAV merge', () async {
     await GStorage.collectibles.put(42, _collect(42, CollectType.watching));
 
-    await GStorage.followTrackerStatus(42, CollectType.watched.value);
+    await followTrackerStatus(42, CollectType.watched.value);
 
     final recorded = GStorage.collectChanges.values.toList();
     expect(recorded, hasLength(1));
@@ -62,7 +63,7 @@ void main() {
   test('a propagation that changes nothing records nothing', () async {
     await GStorage.collectibles.put(43, _collect(43, CollectType.watched));
 
-    await GStorage.followTrackerStatus(43, CollectType.watched.value);
+    await followTrackerStatus(43, CollectType.watched.value);
 
     expect(GStorage.collectChanges, isEmpty);
   });
@@ -96,7 +97,7 @@ void main() {
 
   test('a propagation never touches a subject the owner did not collect',
       () async {
-    await GStorage.followTrackerStatus(44, CollectType.watched.value);
+    await followTrackerStatus(44, CollectType.watched.value);
 
     expect(GStorage.collectibles.containsKey(44), isFalse);
     expect(GStorage.collectChanges, isEmpty);

@@ -322,6 +322,15 @@ The episode/score wheel highlights the center selection and exposes its selected
 value to assistive technology before confirmation. Opening a drawer or cancelling
 a picker does not enqueue a remote change.
 
+Bangumi is the canonical watch status for the library: a Kazumi subject is a
+Bangumi subject. A successful Bangumi drain rewrites only the local category
+when no local edit for that subject is still queued, so a status changed on
+bgm.tv or on another device reaches 追番 on the next drain (app start, or after
+any local status or progress enqueue). AniList is a manual secondary match and
+never drives the local category. Propagation writes no outbox row and no
+collect change, and it updates the row in place: the stored item and its
+timestamp survive a category change.
+
 A drawer status change also moves the show in the local library, because 追番
 lists local collection categories, not tracker entries. The sheet writes the
 equivalent local category and its collect change through

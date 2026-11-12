@@ -1,5 +1,4 @@
 import 'package:kazumi/services/storage/storage.dart';
-import 'package:kazumi/services/tracking/tracking_storage.dart';
 import 'package:kazumi/modules/bangumi/bangumi_item.dart';
 import 'package:kazumi/modules/collect/collect_module.dart';
 import 'package:kazumi/modules/collect/collect_change_module.dart';
@@ -34,11 +33,6 @@ abstract class ICollectCrudRepository {
   Future<void> addCollectible(BangumiItem bangumiItem, int type);
 
   Future<bool> addCollectibleIfMissing(BangumiItem bangumiItem, int type);
-
-  /// 只改写已有收藏的分类，保留原条目与时间戳
-  ///
-  /// 返回false表示该番剧未收藏，调用方可插入
-  Future<bool> setCollectType(int id, int type);
 
   /// 更新收藏的番剧信息
   ///
@@ -136,22 +130,6 @@ class CollectCrudRepository implements ICollectCrudRepository {
     return GStorage.putCollectibleIfAbsent(
       CollectedBangumi(bangumiItem, DateTime.now(), type),
     );
-  }
-
-  @override
-  Future<bool> setCollectType(int id, int type) async {
-    try {
-      if (_collectiblesBox.get(id) == null) return false;
-      await setCollectTypeIfPresent(id, type);
-      return true;
-    } catch (e, stackTrace) {
-      KazumiLogger().e(
-        'GStorage: set collect type failed. id=$id, type=$type',
-        error: e,
-        stackTrace: stackTrace,
-      );
-      rethrow;
-    }
   }
 
   @override

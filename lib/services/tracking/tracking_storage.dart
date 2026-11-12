@@ -1,4 +1,5 @@
 import 'package:kazumi/modules/collect/collect_change_module.dart';
+import 'package:kazumi/services/logging/logger.dart';
 import 'package:kazumi/services/storage/storage.dart';
 import 'package:kazumi/services/tracking/anilist_binding.dart';
 import 'package:kazumi/services/tracking/bangumi_binding.dart';
@@ -10,13 +11,26 @@ import 'package:kazumi/services/tracking/stores.dart';
 
 /// Rewrites only the category of an existing row, keeping its item and
 /// timestamp; a subject that is not collected is left alone.
-Future<void> setCollectTypeIfPresent(int bangumiId, int type) {
+///
+/// Returns false when the row is absent, so the caller can insert it.
+Future<bool> setCollectTypeIfPresent(int bangumiId, int type) {
   return GStorage.runCollectWriteExclusive(() async {
-    final existing = GStorage.collectibles.get(bangumiId);
-    if (existing == null || existing.type == type) return;
-    existing.type = type;
-    await GStorage.collectibles.put(bangumiId, existing);
-    await GStorage.collectibles.flush();
+    try {
+      final existing = GStorage.collectibles.get(bangumiId);
+      if (existing == null) return false;
+      if (existing.type == type) return true;
+      existing.type = type;
+      await GStorage.collectibles.put(bangumiId, existing);
+      await GStorage.collectibles.flush();
+      return true;
+    } catch (e, stackTrace) {
+      KazumiLogger().e(
+        'GStorage: set collect type failed. id=$bangumiId, type=$type',
+        error: e,
+        stackTrace: stackTrace,
+      );
+      rethrow;
+    }
   });
 }
 

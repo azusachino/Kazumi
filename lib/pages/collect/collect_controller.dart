@@ -4,6 +4,7 @@ import 'package:kazumi/modules/collect/collect_module.dart';
 import 'package:kazumi/modules/collect/collect_type.dart';
 import 'package:kazumi/services/storage/storage.dart';
 import 'package:kazumi/services/sync/webdav.dart';
+import 'package:kazumi/modules/collect/tracking_library_mirror.dart';
 import 'package:kazumi/repositories/collect_crud_repository.dart';
 import 'package:mobx/mobx.dart';
 import 'package:kazumi/services/logging/logger.dart';
@@ -55,26 +56,8 @@ abstract class _CollectController with Store {
     }
   }
 
-  /// Mirrors a tracker status into the local library only.
-  ///
-  /// The tracking drawer already enqueued one specific tracker, so this must
-  /// not call [statusChanged]: that would also write the other tracker and
-  /// create bindings the owner did not ask for.
-  Future<void> addCollectFromTracker(BangumiItem bangumiItem, int type) async {
-    if (type == CollectType.none.value) return;
-    final currentCollectType = getCollectType(bangumiItem);
-    // An existing row keeps its stored item and timestamp; the category is
-    // the only thing a tracker status owns.
-    if (!await _collectCrudRepository.setCollectType(bangumiItem.id, type)) {
-      await _collectCrudRepository.addCollectible(bangumiItem, type);
-    }
-    await GStorage.appendCollectChange(
-      bangumiId: bangumiItem.id,
-      action: currentCollectType == 0 ? 1 : 2,
-      type: type,
-    );
-    loadCollectibles();
-  }
+  Future<void> addCollectFromTracker(BangumiItem bangumiItem, int type) =>
+      mirrorTrackerStatus(_collectCrudRepository, bangumiItem, type, loadCollectibles);
 
   @action
   Future<void> deleteCollect(BangumiItem bangumiItem) async {

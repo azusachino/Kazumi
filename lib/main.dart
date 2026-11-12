@@ -9,8 +9,7 @@ import 'package:kazumi/bean/widget/tracker_logo.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:kazumi/services/deep_links/app_deep_links.dart';
 import 'package:kazumi/services/storage/storage.dart';
-import 'package:kazumi/modules/collect/collect_type.dart';
-import 'package:kazumi/services/logging/logger.dart';
+import 'package:kazumi/services/tracking/tracking_startup.dart';
 import 'package:kazumi/services/download/download_directory_service.dart';
 import 'package:hive_ce_flutter/hive_flutter.dart';
 import 'package:kazumi/services/network/metered_network_service.dart';
@@ -116,16 +115,5 @@ void main() async {
     ),
   );
   unawaited(GStorage.trackingSync.drain());
-  unawaited(() async {
-    if (!GStorage.bangumiAccount.isSignedIn) return;
-    try {
-      await GStorage.bangumiBindingManager.ensureBangumiBindings(
-        GStorage.collectibles.values
-            .where((item) => CollectType.fromValue(item.type).isCollected)
-            .map((item) => item.bangumiItem),
-      );
-    } catch (e) {
-      KazumiLogger().e('Tracking: failed to backfill Bangumi bindings', error: e);
-    }
-  }());
+  unawaited(KazumiTrackingStartup.run());
 }

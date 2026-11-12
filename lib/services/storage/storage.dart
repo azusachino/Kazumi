@@ -8,7 +8,7 @@ import 'package:kazumi/hive_registrar.g.dart';
 import 'package:kazumi/modules/history/history_module.dart';
 import 'package:kazumi/modules/collect/collect_module.dart';
 import 'package:kazumi/modules/collect/collect_change_module.dart';
-import 'package:kazumi/modules/collect/collect_type_mapper.dart';
+import 'package:kazumi/modules/collect/tracking_collect_type.dart';
 import 'package:kazumi/modules/collect/collect_sync_merger.dart';
 import 'package:kazumi/modules/search/search_history_module.dart';
 import 'package:kazumi/modules/download/download_module.dart';

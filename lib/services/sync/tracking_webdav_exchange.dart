@@ -3,7 +3,7 @@ import 'dart:io';
 import 'package:kazumi/modules/collect/collect_change_merge.dart';
 import 'package:kazumi/modules/collect/collect_change_module.dart';
 import 'package:kazumi/modules/collect/collect_type.dart';
-import 'package:kazumi/modules/collect/collect_type_mapper.dart';
+import 'package:kazumi/modules/collect/tracking_collect_type.dart';
 import 'package:kazumi/modules/tracking/tracking_sync_file.dart';
 import 'package:kazumi/modules/tracking/tracking_sync_merger.dart';
 import 'package:kazumi/services/logging/logger.dart';

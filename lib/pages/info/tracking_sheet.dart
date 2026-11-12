@@ -11,7 +11,7 @@ import 'package:kazumi/bean/widget/tracker_logo.dart';
 import 'package:kazumi/modules/bangumi/bangumi_item.dart';
 import 'package:kazumi/modules/bangumi/bangumi_title.dart';
 import 'package:kazumi/modules/collect/collect_type.dart';
-import 'package:kazumi/modules/collect/collect_type_mapper.dart';
+import 'package:kazumi/modules/collect/tracking_collect_type.dart';
 import 'package:kazumi/pages/collect/collect_controller.dart';
 import 'package:kazumi/services/logging/logger.dart';
 import 'package:kazumi/pages/info/anilist_search_page.dart';

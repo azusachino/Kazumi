@@ -156,3 +156,34 @@ its target; `git diff --numstat origin/main...HEAD -- <file>` reproduces it.
 | `lib/bean/widget/collect_button.dart` | +21 −48 | ≤ +10 | +9 −66 |
 
 Suite: 355 tests before, 359 after (the four flag off-tests). Both gates exit 0.
+
+## Implementation status
+
+Six commits on `task/tracking-sync`, tree clean at `6dbd242d`.
+
+| Slice | Commit | Note |
+| --- | --- | --- |
+| 1 WebDAV exchange | `6e8528b3` | `webdav.dart` keeps the transport and one call; the exchange owns the file, the merge and the write-back |
+| 2 collect merge | `69074f3b` | `mergeCollectChanges` + `winnerFor` in `collect_change_merge.dart`; `CollectSyncMerger.mergeWebDav` delegates |
+| 3 storage helpers | `ac8dfc64` | `followTrackerStatus` / `setCollectTypeIfPresent` became free functions in `tracking_storage.dart` |
+| 4 small shared files | `37288cd9` | type extension, controller/repository hooks, `main.dart`, `collect_button` shim |
+| 5 flags | `36ccfa7f` | `TrackingFeatures` + four off-tests |
+| 6 docs | `6dbd242d` | layout rule, fork-only list, flags, measured table |
+
+Departures, and why:
+
+1. **Transport publish is a named getter** over the existing `_publishRemoteFile`
+   rather than a method: 2 diff lines instead of 11 in the shared file.
+2. **The two collect-side hooks are free functions**, not exchange methods: they
+   are used by the controller and the drain, not by the WebDAV exchange.
+3. **`setCollectType` was dropped from `ICollectCrudRepository`** — the drawer
+   mirror now calls a fork-only free function, which is why that shared file
+   reaches 0 diff. The trade-off: the fork no longer extends that interface at
+   all, so an upstream change to it cannot collide, but the mirror no longer has
+   a repository seam.
+4. **No settings UI** for the flags; they are read from the settings box only.
+
+Verification: `mise exec -- flutter analyze` exit 0; full `mise exec -- flutter
+test` exit 0 with 359 passing, reproduced by the lead on this tree. No existing
+test changed except one moved-member import. Not verified: any device run of this
+revision (no device attached), and the `Storage.init` wiring end to end.

@@ -1,132 +1,154 @@
 # Plan: coordinate watch status across Bangumi, WebDAV, the library and devices
 
-Follows `tracking-status-consistency-plan.md` (haru.11), which fixed single-device
-consistency. This plan closes the cross-store and cross-device holes that remain.
+Supersedes `tracking-status-consistency-plan.md` (haru.11) for the cross-store
+and cross-device questions. Revised after the GLM review at `84342429`
+(`.tmp/kazumi-plan-review/report.md`).
 
-## The stores and who owns each fact
+## Explicitly supersedes two recorded decisions
+
+`docs/design/tracking.md` currently records:
+
+1. "Propagation writes no outbox row and no collect change."
+2. "Implicit binding creation — Bangumi import, WebDAV apply and the startup
+   backfill — still enqueues nothing."
+
+Decision 1 is reversed here: propagation must record a change or WebDAV reverts
+it. Decision 2 stays true for *import* and *backfill*; it is narrowed for
+**WebDAV apply**, which may enqueue a delta under the guard in slice 4. Slice 5
+rewrites both sentences; until then the design doc is knowingly stale.
+
+## Stores and the fact each owns
 
 | Store | Owns | Travels over |
 | --- | --- | --- |
-| Bangumi collection entry | **canonical watch status** for a subject | the tracker |
+| Bangumi collection entry | **canonical watch status**, with its own `updated_at` | the tracker |
 | AniList entry | secondary manual match | the tracker |
-| `collectibles` (在看/想看/…) | what 追番 lists | WebDAV (`collectibles.tmp` + `collectchanges.tmp`) |
-| `trackingEntryCache` | what the drawer displays | never (per device, display only) |
+| `collectibles` (在看/想看/…) | this device's projection of the status | WebDAV |
+| `collectchanges` | the intent log that makes WebDAV merge possible | WebDAV |
+| `trackingEntryCache` | what the drawer displays | never (display only) |
 | `trackingOutbox` | pending writes | never (per device) |
 
-Coordinate on one rule: **Bangumi owns the status of a show; the local category
-is this device's projection of it; WebDAV carries the projection and the intent
-between devices; AniList is independent.**
+Rule: **Bangumi owns the status; the local category is a projection; WebDAV
+carries the projection and the intent; AniList is independent.**
 
 ## Holes this plan closes
 
-1. **Propagation is invisible to WebDAV.** `GStorage.setCollectTypeIfPresent`
-   rewrites the category with no `CollectedBangumiChange`. `CollectSyncMerger`
-   only replays *recorded* changes over a remote base, so the next collectibles
-   sync reverts the propagated category. A bgm.tv edit shows once, then is
-   undone.
-2. **WebDAV merge is not last-write-wins by time.** Remote box is the base and
-   local changes replay in id order, so the device that syncs later wins
-   regardless of when the user acted.
-3. **A category arriving over WebDAV never reaches the trackers.** Apply
-   enqueues nothing, so a device that receives 在看 keeps Bangumi at 想看 until
-   someone edits locally.
-4. **No loop protection exists for 1–3 once writes travel both ways.**
+1. **Propagation is invisible to WebDAV** — drain propagation rewrites the
+   category with no change record, so the next collectibles sync reverts it.
+2. **The merge is not last-write-wins by time** — remote box is the base and
+   local changes replay, so the later syncer wins regardless of intent; and
+   same-second ids from two devices can collide, silently dropping a change.
+3. **A category arriving over WebDAV never reaches the trackers** on that device.
+4. **No origin concept**, so once 1–3 make writes travel both ways nothing bounds
+   a loop.
 
 ## Decisions
 
-1. Every category write records a change, including propagation and WebDAV
-   apply. The change log is the only channel WebDAV merges, so a silent write is
-   a lost write.
-2. A change carries its **origin**: `user` or `tracker`. Origin decides whether
-   applying it may enqueue a tracker write. A tracker-origin change never
-   enqueues, which bounds the loop: tracker → local → other devices → their
-   local, and stop.
-3. The merge is **last-write-wins per subject by change timestamp**, ties keep
-   local. The box rows are a projection, not the ordering input.
-4. Apply may enqueue **only a delta**: a subject whose merged category differs
-   from the local one, whose winning change is `user` origin, and which has no
-   outbox row.
-5. AniList stays out of this plan: it is a manual match and never drives the
-   library.
+1. **Every category write records a change**, including propagation and apply.
+2. **Changes carry an origin** (`user` / `tracker`). Origin is not the loop guard
+   on its own — it is an input to it.
+3. **A tracker-origin change never causes a tracker write**, so propagation
+   cannot echo back.
+4. **Apply may enqueue only when the winning change is newer than the tracker's
+   own `updated_at`.** A user-origin change that predates a deliberate tracker
+   edit must not overwrite it. This needs the tracker timestamp (slice 4a); it is
+   the one piece of new data the review showed is unavoidable.
+5. **Comparison is symmetric and deterministic.** Ties between two devices
+   resolve by content, not by "keep local": higher origin first (`user` before
+   `tracker`), then higher `type`. Both devices pick the same winner whichever
+   side they are on, so a tie converges instead of oscillating.
+6. **The change log is keyed by `(id, subject)`**, not `id`; an incoming change
+   whose id is taken locally by a different subject gets a fresh local id, so a
+   collision can never drop either edit.
+7. **Apply enqueues Bangumi only.** AniList is never written from a received
+   category.
+8. AniList never drives the library category.
 
 ## Slices
 
-Test first, one commit each, no live accounts in tests.
+Test first, one commit each, fakes only.
 
-### Slice 1: record the origin of a category change
+### Slice 1: change origin, on a safe Hive field
 
 Files: `lib/modules/collect/collect_change_module.dart` (+ regenerated adapter),
-`lib/services/storage/storage.dart`, `lib/pages/collect/collect_controller.dart`,
-`lib/services/sync/webdav.dart` (call site), `app` migration if needed.
+`lib/services/storage/storage.dart`.
 
-- Add `@HiveField(4) int origin` with `0 = user`, `1 = tracker`; absent rows in
-  older boxes read as `0` (additive field, no typeId change). Regenerate the
-  adapter and verify the diff adds only that field.
-- `GStorage.appendCollectChange` takes `origin` (default `user`); the drain
-  propagation passes `tracker`.
-- Tests: a user write records no new fields beyond origin 0; propagation records
-  origin 1; an existing row without the field loads as user.
+- `@HiveField(5, defaultValue: 0) int origin;` — field 4 is already `timestamp`;
+  field 5 is the next free index. `defaultValue: 0` is mandatory: the generated
+  adapter reads `(fields[i] as num).toInt()`, and this box is synced as raw Hive
+  bytes, so rows written by older builds are everywhere. Without it the new build
+  throws while opening the box and `_openBoxSafe` recovery becomes the fallback.
+- `0 = user`, `1 = tracker`. `appendCollectChange` takes `origin`, default user.
+- Regenerate with build_runner; verify the diff adds only field 5 and no typeId
+  change.
+- Tests: an old-shaped row (no field 5) loads with origin 0 and does not throw; a
+  new write round-trips; the drain propagation records origin 1.
 
-### Slice 2: make the propagation survive WebDAV
+### Slice 2: propagation records a change, atomically
 
 Files: `lib/services/storage/storage.dart` (`setCollectTypeIfPresent` →
-`followTrackerStatus`), tests.
+`followTrackerStatus`), tests. Also delete the dead, now same-named
+`CollectController.followTrackerStatus` (its only caller is a test) or rename it,
+so two layers do not share a name with different semantics.
 
-- Propagation appends a `tracker`-origin change together with the category
-  write, in the same serialized write, so the pair is atomic from the merger's
-  point of view.
-- Test: after propagation, a `mergeWebDav` against a remote box that still holds
-  the old category keeps the new category (this is exactly hole 1).
+- The category write and the `tracker`-origin change append happen inside **one**
+  `_runCollectChangesWriteExclusive` block, not two acquisitions.
+- Test: after propagation, merging against a remote box that still holds the old
+  category keeps the new one (hole 1), and no outbox row is created.
 
-### Slice 3: last-write-wins merge per subject
+### Slice 3: per-subject LWW with a symmetric tie-break
 
 Files: `lib/modules/collect/collect_sync_merger.dart`, its tests.
 
-- Build the union of local and remote changes by id; per subject keep the change
-  with the greatest `timestamp` (tie → local). Apply those winners to the remote
-  box base, as today, including `action == 3` deletes.
-- Keep the returned `changes` as the union so both sides converge on the same
-  log.
-- Tests: remote newer wins; local newer wins over a newer remote box row; tie
-  keeps local; a delete beats an older add; unrelated subjects untouched.
+- Identity is `(id, subject)`. Union both logs; on an id collision between
+  different subjects, keep both (the incoming one gets a fresh id at apply time).
+- Per subject, the winning change is the greatest `(timestamp, originRank, type)`
+  tuple; apply winners over the remote base, including `action == 3` deletes.
+- Tests: remote newer wins; local newer wins; same-second tie resolves by content
+  identically from either side (assert by merging in both directions and
+  comparing); id collision between different subjects keeps both edits; delete
+  beats an older add; unrelated subjects untouched.
 
-### Slice 4: apply enqueues only a user-origin delta
+### Slice 4: apply enqueues a guarded delta
 
-Files: `lib/services/sync/webdav.dart`, `test/webdav_service_test.dart`.
+Files: `lib/services/tracking/models.dart` (`RemoteEntry.updatedAt`),
+`lib/services/tracking/bangumi_tracker.dart` (populate from the collection
+response's `updated_at`), `lib/services/tracking/tracking_entry_cache.dart`
+(persist it), `lib/services/sync/webdav.dart`, `test/webdav_service_test.dart`.
 
-- After `patchCollectibles`, compare each merged subject's category with what
-  the tracker currently reflects. For subjects where it differs, the winning
-  change is user-origin, a binding exists, and no outbox row is pending,
-  enqueue that category (no progress, no score).
-- Tracker-origin winners and unchanged subjects enqueue nothing.
-- Two-device test with the in-memory client: A sets 看过 and syncs; B syncs and
-  its trackers receive 看过 exactly once; a second sync on either device
-  enqueues nothing.
+- 4a: carry the tracker's `updated_at` on `RemoteEntry` and cache it, so a
+  comparison against change timestamps is possible at all.
+- 4b: after `patchCollectibles`, for each subject whose **local category differs
+  from the tracker status this device last recorded**, where the winning change is
+  user-origin, **newer than that recorded tracker `updated_at`**, a Bangumi
+  binding exists, and no outbox row is pending → enqueue the category with
+  `trackerId: TrackerId.bangumi`. Everything else enqueues nothing.
+- Tests: A sets 看过 and syncs; B syncs, then **B drains** and writes 看过 exactly
+  once; a second sync enqueues nothing. A stale user change older than a newer
+  bgm.tv edit enqueues **nothing** and the tracker keeps the web edit. A
+  tracker-origin winner enqueues nothing. An AniList binding is never the target.
 
 ### Slice 5: docs, evidence, limits
 
-- Update `docs/design/tracking.md` with the ownership table, origin rule, LWW
-  rule and the delta rule.
-- Update `docs/reviews/tracking-ui-followup.md`: what is now coordinated and
-  what still is not.
+- Rewrite the two superseded sentences in `docs/design/tracking.md`; add the
+  ownership table, the origin rule, the symmetric tie-break, the collision rule
+  and the timestamp guard.
+- Update `docs/reviews/tracking-ui-followup.md`: what is coordinated now, what is
+  not.
 - Gates: plain `flutter analyze` clean, full `flutter test` green.
 
-## Known limits this plan accepts
+## Accepted limits
 
-- Convergence is eventual, at sync/drain points; there is no push channel.
-- Change ids are second-granularity; two same-second edits on different devices
-  resolve by tie-break, not by real order.
-- AniList is never propagated to and never drives the library.
-- A drain failure still leaves the local category ahead until retry.
-- Deletions stay local-only against the trackers.
+- Eventual convergence at sync/drain points; no push channel.
+- Wall clocks decide LWW; a fast clock wins. Ties resolve by content, not time.
+- Downgrade: an old build drops origin and can re-enqueue once.
+- A drain failure leaves the local category ahead until retry.
+- Deletions stay local-only against trackers; AniList is never propagated to.
 
 ## Risks
 
-- Adding a Hive field to a synced box: older app versions ignore it (safe), but
-  a downgrade will drop origin information; a tracker-origin change read by an
-  old build looks like a user change and can re-enqueue. Accept, note it.
-- Apply now writes to trackers on some paths; it must never fail the collect
-  sync, and it must never enqueue for a subject the owner did not touch on this
-  device.
-- The merge change touches the most-used sync path; keep the existing behaviour
-  for a single device unchanged, which the current tests already pin.
+- Adding a field to a synced box: forward-safe, downgrade lossy (above).
+- Apply can now write to a tracker; it must never fail the collect sync and never
+  touch a subject the owner did not act on.
+- The merge change sits on the most-travelled sync path; single-device behaviour
+  must stay pinned by the existing tests.

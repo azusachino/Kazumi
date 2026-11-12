@@ -76,17 +76,6 @@ abstract class _CollectController with Store {
     loadCollectibles();
   }
 
-  /// Follows a status the tracker itself already holds.
-  ///
-  /// No collect change is recorded and no tracker is written: the remote is
-  /// the source, so echoing it back would only loop.
-  Future<void> followTrackerStatus(BangumiItem bangumiItem, int type) async {
-    if (type == CollectType.none.value) return;
-    if (getCollectType(bangumiItem) == type) return;
-    await _collectCrudRepository.setCollectType(bangumiItem.id, type);
-    loadCollectibles();
-  }
-
   @action
   Future<void> deleteCollect(BangumiItem bangumiItem) async {
     await _collectCrudRepository.deleteCollectible(bangumiItem.id);

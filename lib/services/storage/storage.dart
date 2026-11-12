@@ -124,19 +124,36 @@ class GStorage {
     int? timestamp,
     int origin = CollectChangeOrigin.user,
   }) {
-    return _runCollectChangesWriteExclusive(() async {
-      final change = CollectedBangumiChange(
-        _generateCollectChangeIdLocked(),
-        bangumiId,
-        action,
-        type,
-        timestamp ?? (DateTime.now().millisecondsSinceEpoch ~/ 1000),
+    return _runCollectChangesWriteExclusive(
+      () => _appendCollectChangeLocked(
+        bangumiId: bangumiId,
+        action: action,
+        type: type,
+        timestamp: timestamp,
         origin: origin,
-      );
-      await collectChanges.put(change.id, change);
-      await collectChanges.flush();
-      return change;
-    });
+      ),
+    );
+  }
+
+  /// Appends a change inside an already held collect write block.
+  static Future<CollectedBangumiChange> _appendCollectChangeLocked({
+    required int bangumiId,
+    required int action,
+    required int type,
+    int? timestamp,
+    int origin = CollectChangeOrigin.user,
+  }) async {
+    final change = CollectedBangumiChange(
+      _generateCollectChangeIdLocked(),
+      bangumiId,
+      action,
+      type,
+      timestamp ?? (DateTime.now().millisecondsSinceEpoch ~/ 1000),
+      origin: origin,
+    );
+    await collectChanges.put(change.id, change);
+    await collectChanges.flush();
+    return change;
   }
 
   /// Update an existing collect change
@@ -179,6 +196,27 @@ class GStorage {
       existing.type = type;
       await collectibles.put(bangumiId, existing);
       await collectibles.flush();
+    });
+  }
+
+  /// Follows a status the tracker already holds: the category rewrite and its
+  /// `tracker`-origin change land in one write block, so the next collectibles
+  /// merge cannot revert the status the drain just observed.
+  ///
+  /// No outbox row is created: the remote is the source of this status.
+  static Future<void> followTrackerStatus(int bangumiId, int type) {
+    return _runCollectChangesWriteExclusive(() async {
+      final existing = collectibles.get(bangumiId);
+      if (existing == null || existing.type == type) return;
+      existing.type = type;
+      await collectibles.put(bangumiId, existing);
+      await collectibles.flush();
+      await _appendCollectChangeLocked(
+        bangumiId: bangumiId,
+        action: 2,
+        type: type,
+        origin: CollectChangeOrigin.tracker,
+      );
     });
   }
 
@@ -238,9 +276,10 @@ class GStorage {
             : anilistAccount.username,
       ),
       // A status set on bgm.tv or on another device reaches 追番 through the
-      // same in-place write, without an outbox row or a collect change.
+      // same in-place write, recording a tracker-origin change so the next
+      // WebDAV merge keeps it.
       onRemoteStatus: (subjectId, status) =>
-          setCollectTypeIfPresent(subjectId, status.toCollectType().value),
+          followTrackerStatus(subjectId, status.toCollectType().value),
     );
     bangumiBindingManager = BangumiBindingManager(
       bangumiAccount,

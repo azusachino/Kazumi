@@ -337,31 +337,6 @@ void main() {
     expect(inserted.bangumiItem.id, 456);
   });
 
-  test('following a tracker status keeps the item and records no collect change',
-      () async {
-    final controller = CollectController(CollectCrudRepository());
-    final stored = _item()
-      ..id = 789
-      ..name = 'Stored richer title';
-    final addedAt = DateTime(2021, 5, 6);
-    await GStorage.collectibles.put(
-      789,
-      CollectedBangumi(stored, addedAt, CollectType.planToWatch.value),
-    );
-
-    await controller.followTrackerStatus(_item()..id = 789,
-        CollectType.watched.value);
-
-    final row = GStorage.collectibles.get(789)!;
-    expect(row.type, CollectType.watched.value);
-    expect(row.bangumiItem.name, 'Stored richer title');
-    expect(row.time, addedAt);
-    expect(
-      GStorage.collectChanges.values.where((change) => change.bangumiID == 789),
-      isEmpty,
-    );
-  });
-
   testWidgets('signed-out state points to account settings', (tester) async {
     await tester.pumpWidget(
       MaterialApp(

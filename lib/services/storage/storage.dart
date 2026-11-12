@@ -122,6 +122,7 @@ class GStorage {
     required int action,
     required int type,
     int? timestamp,
+    int origin = CollectChangeOrigin.user,
   }) {
     return _runCollectChangesWriteExclusive(() async {
       final change = CollectedBangumiChange(
@@ -130,6 +131,7 @@ class GStorage {
         action,
         type,
         timestamp ?? (DateTime.now().millisecondsSinceEpoch ~/ 1000),
+        origin: origin,
       );
       await collectChanges.put(change.id, change);
       await collectChanges.flush();

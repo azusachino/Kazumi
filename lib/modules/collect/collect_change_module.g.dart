@@ -23,13 +23,14 @@ class CollectedBangumiChangeAdapter
       (fields[2] as num).toInt(),
       (fields[3] as num).toInt(),
       (fields[4] as num).toInt(),
+      origin: fields[5] == null ? 0 : (fields[5] as num).toInt(),
     );
   }
 
   @override
   void write(BinaryWriter writer, CollectedBangumiChange obj) {
     writer
-      ..writeByte(5)
+      ..writeByte(6)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -39,7 +40,9 @@ class CollectedBangumiChangeAdapter
       ..writeByte(3)
       ..write(obj.type)
       ..writeByte(4)
-      ..write(obj.timestamp);
+      ..write(obj.timestamp)
+      ..writeByte(5)
+      ..write(obj.origin);
   }
 
   @override

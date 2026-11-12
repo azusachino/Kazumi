@@ -86,6 +86,19 @@ class CollectSyncMerger {
     return winners;
   }
 
+  /// The winning change for one subject, using the same order as the merge.
+  static CollectedBangumiChange? winnerFor(
+    int subjectId,
+    Iterable<CollectedBangumiChange> changes,
+  ) {
+    CollectedBangumiChange? winner;
+    for (final change in changes) {
+      if (change.bangumiID != subjectId) continue;
+      if (winner == null || _compare(change, winner) > 0) winner = change;
+    }
+    return winner;
+  }
+
   static int _compare(CollectedBangumiChange a, CollectedBangumiChange b) {
     final byTime = a.timestamp.compareTo(b.timestamp);
     if (byTime != 0) return byTime;

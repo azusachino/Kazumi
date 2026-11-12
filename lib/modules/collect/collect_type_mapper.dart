@@ -45,3 +45,19 @@ extension TrackStatusCollectTypeMapper on TrackStatus {
     };
   }
 }
+
+/// Converting a local [CollectType] to the tracker status it describes.
+extension CollectTypeTrackStatusMapper on CollectType {
+  /// Converts this local type to the equivalent tracker status, or null when
+  /// the subject is not collected at all.
+  TrackStatus? toTrackStatus() {
+    return switch (this) {
+      CollectType.planToWatch => TrackStatus.planning,
+      CollectType.watching => TrackStatus.current,
+      CollectType.watched => TrackStatus.completed,
+      CollectType.onHold => TrackStatus.paused,
+      CollectType.abandoned => TrackStatus.dropped,
+      CollectType.none => null,
+    };
+  }
+}

@@ -7,7 +7,9 @@ import 'package:kazumi/services/storage/storage.dart';
 import 'package:kazumi/services/logging/logger.dart';
 import 'package:kazumi/modules/collect/collect_module.dart';
 import 'package:kazumi/modules/collect/collect_change_module.dart';
+import 'package:kazumi/modules/collect/collect_sync_merger.dart';
 import 'package:kazumi/modules/collect/collect_type.dart';
+import 'package:kazumi/modules/collect/collect_type_mapper.dart';
 import 'package:kazumi/modules/tracking/tracking_sync_file.dart';
 import 'package:kazumi/services/tracking/models.dart';
 import 'package:kazumi/services/tracking/tracker.dart';
@@ -256,9 +258,57 @@ class WebDav {
       await GStorage.patchCollectibles(remoteCollectibles, remoteChanges);
     }
     await _ensureCollectedBangumiBindings();
+    await _enqueueReceivedStatuses();
     await _updateBox('collectibles');
     if (GStorage.collectChanges.isNotEmpty) {
       await _updateBox('collectchanges');
+    }
+  }
+
+  /// A category that arrived over WebDAV reaches Bangumi only when the owner
+  /// changed it after the tracker's own last edit. A tracker-origin change
+  /// never echoes back, AniList is never a target, and a pending row already
+  /// owes a write.
+  Future<void> _enqueueReceivedStatuses() async {
+    try {
+      final changes = GStorage.collectChanges.values.toList();
+      final cache = GStorage.trackingEntryCache;
+      for (final binding in GStorage.trackingBindings.values) {
+        if (binding.trackerId != TrackerId.bangumi) continue;
+        if (GStorage.trackingOutbox.containsKey(binding.key)) continue;
+        final status = CollectType.fromValue(
+          GStorage.collectibles.get(binding.subjectId)?.type ??
+              CollectType.none.value,
+        ).toTrackStatus();
+        if (status == null) continue;
+        final recorded = cache.get(binding)?.entry;
+        // Nothing to compare against, or nothing to write back.
+        if (recorded == null || recorded.status == status) continue;
+        final trackerAt = recorded.updatedAt;
+        if (trackerAt == null) continue;
+        final winner = CollectSyncMerger.winnerFor(binding.subjectId, changes);
+        if (winner == null ||
+            winner.origin != CollectChangeOrigin.user ||
+            winner.action == 3) {
+          continue;
+        }
+        final changedAt = DateTime.fromMillisecondsSinceEpoch(
+          winner.timestamp * 1000,
+          isUtc: true,
+        );
+        if (!changedAt.isAfter(trackerAt)) continue;
+        await GStorage.trackingSync.enqueue(
+          binding.subjectId,
+          status: status,
+          trackerId: TrackerId.bangumi,
+        );
+      }
+    } catch (e) {
+      // A tracker write must never fail the collect sync.
+      KazumiLogger().e(
+        'WebDav: failed to enqueue a received status',
+        error: e,
+      );
     }
   }
 

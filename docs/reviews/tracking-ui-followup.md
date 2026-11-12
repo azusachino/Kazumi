@@ -245,7 +245,8 @@ audit:
   shows `本地追番状态未更新，追踪状态已保存`.
 - **Fixed: a tracker-side edit never reached 追番.** A successful Bangumi drain
   now mirrors its status into the local category when no local edit is queued,
-  writing no outbox row and no collect change. AniList never drives the library.
+  writing no outbox row. (It writes a `tracker`-origin collect change; see the
+  cross-device follow-up below.) AniList never drives the library.
 - **Dropped, deliberately:** doing the same from the drawer's own read. A
   library write awaited in that path parks on Hive I/O in the widget-test
   fake-async zone and hangs the suite; the drain owns propagation instead, so a
@@ -269,3 +270,70 @@ Still true, unchanged:
 Gates at this revision: plain `mise exec -- flutter analyze` exit 0, no issues;
 full `mise exec -- flutter test` exit 0, 339 passed. Deviations and their
 reasons are recorded in the plan. Self-review only.
+
+### Cross-device status follow-up (haru.12)
+
+Plan: `docs/plans/tracking-cross-device-status-plan.md`, which supersedes
+`docs/plans/tracking-status-consistency-plan.md` for the cross-store and
+cross-device questions. Design is rewritten in `docs/design/tracking.md`
+("Watch status across stores and devices").
+
+Coordinated now:
+
+- **Propagation is visible to the merge.** A drained Bangumi status rewrites the
+  category and appends a `tracker`-origin collect change in one write block, so
+  the next collectibles sync can no longer revert it to the category the other
+  device still holds. Nothing is enqueued.
+- **Origin is recorded.** `CollectedBangumiChange.origin` (Hive field 5,
+  default 0 = user, 1 = tracker) is backward compatible: rows written by an
+  older build load as `user`, and the generated adapter gained only that field
+  with no typeId change.
+- **The merge is last-write-wins per subject with a symmetric tie-break.** The
+  log is keyed by `(id, subject)`; per subject the winner is the greatest
+  `(timestamp, origin, type)` with owner before tracker echo, then higher
+  category. Two devices merging each other's data now pick the same winner
+  instead of "keep local", and a same-second id minted for different subjects
+  keeps both edits (the incoming one moves to a fresh local id).
+- **A received category can reach Bangumi.** After a collectibles merge, a
+  user-origin winning change newer than the tracker's own `updated_at`, for a
+  subject with a Bangumi binding, no pending row and a differing recorded
+  status, enqueues one Bangumi delta. `RemoteEntry.updatedAt` comes from the
+  Bangumi collection response and is persisted in `trackingEntryCache`; it is
+  never invented.
+
+Still not coordinated, deliberately:
+
+- No push channel: convergence happens at sync and drain points.
+- Wall clocks decide; a fast clock wins, and a tie is decided by content.
+- A stale local change is dropped rather than written: the tracker's own newer
+  edit stands.
+- AniList never drives the library and is never a propagation target.
+- Deletions stay local-only; no tracker removal is propagated.
+- An older build that reads the synced log drops `origin`, so it can re-enqueue
+  once until it is updated.
+- A drain failure still leaves the local category ahead of the tracker until the
+  outbox retries.
+
+Evidence at this revision (`task/tracking-sync`):
+
+- `aac474ab` origin field. Red: the new test could not compile — no `origin` on
+  `CollectedBangumiChange`. Adapter regenerated with build_runner; diff adds
+  field 5 and the read default only, typeId 5 unchanged.
+- `3c038b15` propagation records a change. Red: after a drain-style category
+  write the log was empty (`Expected: an object with length of <1>`, `Actual:
+  []`), which is exactly why the next merge reverted it.
+- `c1d3af53` per-subject LWW. Red, four ways: the remote base won an older
+  change; a same-second tie depended on which side merged; a colliding id kept
+  one subject instead of two; a newer remote delete left the row in place.
+- `bf9b560e` tracker `updated_at` on `RemoteEntry` and in the entry cache. Red:
+  no `updatedAt` on `RemoteEntry`, and no such cache field.
+- `282d3a6a` guarded enqueue after a collectibles merge. Red: the new test's
+  tracker recorded no call — nothing was enqueued for a category that arrived
+  over WebDAV.
+- Gates: `mise exec -- flutter analyze` exit 0, no issues; `mise exec -- flutter
+  test` exit 0, 355 passed (339 before this follow-up). Fakes only: no real
+  account, no network write.
+
+Not covered: the live wiring `Storage.init` → `onRemoteStatus` is not exercised
+end to end by a test (the callback body is, and the drain's call to it is), and
+no device has run this build yet.

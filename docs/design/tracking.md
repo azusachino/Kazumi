@@ -327,9 +327,50 @@ Bangumi subject. A successful Bangumi drain rewrites only the local category
 when no local edit for that subject is still queued, so a status changed on
 bgm.tv or on another device reaches 追番 on the next drain (app start, or after
 any local status or progress enqueue). AniList is a manual secondary match and
-never drives the local category. Propagation writes no outbox row and no
-collect change, and it updates the row in place: the stored item and its
-timestamp survive a category change.
+never drives the local category. Propagation updates the row in place — the
+stored item and its timestamp survive a category change — and records a
+`tracker`-origin collect change in the same write block, so the next
+collectibles merge keeps it. It creates no outbox row: the tracker is the
+source of that status.
+
+### Watch status across stores and devices
+
+| Store | Owns | Travels over |
+| --- | --- | --- |
+| Bangumi collection entry | the canonical watch status, with its own `updated_at` | the tracker |
+| AniList entry | a manual secondary match | the tracker |
+| `collectibles` | this device's projection of the status | WebDAV |
+| `collectchanges` | the intent log the WebDAV merge needs | WebDAV |
+| `trackingEntryCache` | what the drawer displays | never |
+| `trackingOutbox` | pending tracker writes | never (per device) |
+
+- **Origin.** Every collect change records whether the owner made it (`user`)
+  or this device followed a status the tracker already held (`tracker`).
+  `CollectedBangumiChange.origin` is Hive field 5 defaulting to 0, so rows
+  written by an older build read as `user` instead of failing to open.
+- **A tracker-origin change never causes a tracker write**, so propagation
+  cannot echo back to the source it came from.
+- **Merging is last-write-wins per subject**, not per change. A change is
+  identified by `(id, subject)`; the log is the union of both sides, and the
+  winner for a subject is the greatest `(timestamp, origin, type)`: the owner
+  outranks a tracker echo, and a higher category breaks a same-second tie. Both
+  devices compute the same winner whichever side they merge from, so a tie
+  converges instead of oscillating. Deletes take part: a newer delete removes
+  the row, a newer add restores it.
+- **An id collision cannot drop an edit.** Two devices can mint the same
+  same-second id for different subjects, so the merge keeps both entries and
+  `patchCollectibles` moves the incoming one to a fresh local id when an id is
+  already taken by another subject.
+- **A received category reaches Bangumi only when it is the owner's own and
+  newer than the tracker's edit.** After a collectibles merge, a `user`-origin
+  winning change whose local category differs from the status this device last
+  recorded, and whose timestamp is newer than that entry's Bangumi
+  `updated_at`, is enqueued for Bangumi unless a row is already pending. An
+  older local change leaves the tracker's own edit alone, AniList is never a
+  target, and a subject with no recorded tracker timestamp is skipped rather
+  than guessed at.
+- **Wall clocks decide.** A device with a fast clock wins; ties resolve by
+  content, not time, which is what makes them converge.
 
 A drawer status change also moves the show in the local library, because 追番
 lists local collection categories, not tracker entries. The sheet writes the
@@ -344,8 +385,10 @@ binding and, only when that binding did not already exist, enqueues
 `TrackStatus.planning` (`想看`) so the tracker gains a real entry instead of the
 drawer falling back to the `状态` placeholder. An already-bound subject keeps
 the status the tracker already has, and implicit binding creation — Bangumi
-import, WebDAV apply and the startup backfill — still enqueues nothing, because
-those paths describe state the remote already holds.
+import and the startup backfill — still enqueues nothing, because those paths
+describe state the remote already holds. WebDAV apply is the one exception: a
+category that arrives there may enqueue a Bangumi delta under the timestamp
+guard above, because on that device the tracker has not seen the category yet.
 
 ### Local entry snapshots
 

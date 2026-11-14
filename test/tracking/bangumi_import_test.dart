@@ -95,7 +95,12 @@ void main() {
     final sync = TrackingSync(bindings: bindings, outbox: outbox,
         trackers: [tracker], tokenProvider: (_) => account.validToken(),
         schedule: (_, _) => () {});
-    GStorage.bangumiBindingManager = BangumiBindingManager(account, bindings, sync);
+    GStorage.bangumiBindingManager = BangumiBindingManager(
+      account,
+      bindings,
+      sync,
+      tombstones: await Hive.openBox<int>('trackingTombstones'),
+    );
     final repository = MemoryCollect();
     final item = BangumiItem.fromJson({
       'id': 5, 'name': 'show', 'images': <String, String>{},
@@ -106,6 +111,63 @@ void main() {
     expect(repository.rows[5]!.type, 4);
     expect(GStorage.collectChanges.values.single.type, 4);
     expect(outbox.rows['5:bangumi']!.status, TrackStatus.completed);
+    sync.dispose();
+    await Hive.close();
+    await dir.delete(recursive: true);
+  });
+
+  test('import ensures collected bindings without changing local status or outbox', () async {
+    final dir = await Directory.systemTemp.createTemp('kazumi-import-bindings');
+    Hive.init(dir.path);
+    final settings = await Hive.openBox<dynamic>('settings');
+    final adapter = FakeAdapter((request) {
+      if (request.path.endsWith('/me')) {
+        return (status: 200, headers: null, body: {'id': 1, 'username': 'alice'});
+      }
+      return (status: 200, headers: null, body: {
+        'total': 3,
+        'data': [for (final id in [1, 2, 3]) {
+          'subject_id': id, 'type': 3, 'updated_at': '2026-01-01T00:00:00Z',
+          'subject': {'id': id, 'name': 'show'},
+        }],
+      });
+    });
+    final tracker = BangumiTracker(adapter: adapter);
+    final account = BangumiAccount(settings: settings, tracker: tracker);
+    await account.signInWithToken('token');
+    await settings.put(SettingsKeys.bangumiExcludedSubjectIds.name, ['3']);
+    final bindings = MemoryBindings();
+    final outbox = MemoryOutbox();
+    final sync = TrackingSync(
+      bindings: bindings,
+      outbox: outbox,
+      trackers: [FakeTracker(TrackerId.bangumi)],
+      tokenProvider: (_) async => 'token',
+      schedule: (_, _) => () {},
+    );
+    final manager = BangumiBindingManager(
+      account,
+      bindings,
+      sync,
+      tombstones: await Hive.openBox<int>('trackingTombstones'),
+    );
+    final repository = MemoryCollect();
+    final original = BangumiItem.fromJson({
+      'id': 1, 'type': 2, 'name': 'original', 'images': <String, String>{},
+      'rating': {'rank': 0, 'score': 0, 'total': 0, 'count': <int>[]},
+    });
+    await repository.addCollectible(original, 4);
+    final importer = BangumiImport(
+      account, tracker, repository,
+      recordChange: (_, _) async {},
+      ensureBinding: manager.ensureBangumiBinding,
+    );
+
+    expect(await importer.run(), 2);
+    expect(bindings.rows.keys, {'1:bangumi', '2:bangumi'});
+    expect(repository.rows[1]!.type, 4);
+    expect(outbox.rows, isEmpty);
+
     sync.dispose();
     await Hive.close();
     await dir.delete(recursive: true);

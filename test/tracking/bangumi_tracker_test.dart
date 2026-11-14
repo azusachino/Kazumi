@@ -109,6 +109,7 @@ void main() {
             'type': mapping.key,
             'rate': 7,
             'subject': {'eps': 12},
+            'updated_at': '2026-05-04T03:02:01Z',
           },
           headers: null,
         );
@@ -118,6 +119,9 @@ void main() {
       expect(entry!.status, mapping.value);
       expect(entry.score, 70);
       expect(entry.total, 12);
+      // The tracker's own edit time, taken from the response: the collect sync
+      // compares a local change against it before writing back.
+      expect(entry.updatedAt, DateTime.utc(2026, 5, 4, 3, 2, 1));
       await tracker.save('secret', '123', status: mapping.value, score: 76);
       expect(posted, {'type': mapping.key, 'rate': 8});
       expect(adapter.requests.where((r) => r.path.endsWith('/me')).length, 1);
@@ -185,7 +189,15 @@ void main() {
             headers: null,
           );
         }
-        return (status: 200, body: {'type': 3, 'rate': 0}, headers: null);
+        return (
+          status: 200,
+          body: {
+            'type': 3,
+            'rate': 0,
+            'updated_at': '2026-05-04T03:02:01Z',
+          },
+          headers: null,
+        );
       });
       final tracker = BangumiTracker(adapter: adapter);
       final entry = await tracker.readEntry('token', '1');
@@ -228,7 +240,11 @@ void main() {
           headers: null,
         );
       }
-      return (status: 200, body: {'type': 3, 'rate': 0}, headers: null);
+      return (
+        status: 200,
+        body: {'type': 3, 'rate': 0, 'updated_at': '2026-05-04T03:02:01Z'},
+        headers: null,
+      );
     });
     expect(
       await BangumiTracker(adapter: adapter).save('token', '1', progress: 1),

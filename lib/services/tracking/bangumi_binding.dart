@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:hive_ce/hive.dart';
 import 'package:kazumi/modules/bangumi/bangumi_item.dart';
 import 'package:kazumi/modules/collect/collect_type.dart';
 import 'package:kazumi/services/storage/settings_keys.dart';
@@ -11,10 +12,14 @@ import 'tracker.dart';
 import 'tracking_sync.dart';
 
 class BangumiBindingManager {
-  BangumiBindingManager(this.account, this.bindings, this.sync);
+  BangumiBindingManager(this.account, this.bindings, this.sync,
+      {required this.tombstones, DateTime Function()? clock})
+      : clock = clock ?? DateTime.now;
   final BangumiAccount account;
   final BindingStore bindings;
   final TrackingSync sync;
+  final Box<int> tombstones;
+  final DateTime Function() clock;
   Future<void> _queue = Future.value();
 
   Future<void> _queued(Future<void> Function() action) {
@@ -38,14 +43,14 @@ class BangumiBindingManager {
     return saved is List ? saved.whereType<String>().toList() : <String>[];
   }
 
-  Future<void> _ensureBinding(BangumiItem item) async {
+  Future<bool> _ensureBinding(BangumiItem item) async {
     final id = '${item.id}';
     if (!account.isSignedIn || _excludedSubjectIds.contains(id)) {
-      return;
+      return false;
     }
     final key = '${item.id}:${TrackerId.bangumi.name}';
     if (await bindings.get(key) != null) {
-      return;
+      return false;
     }
     await bindings.put(
       TrackingBinding(
@@ -54,12 +59,25 @@ class BangumiBindingManager {
         remoteId: id,
         title: item.name.trim().isEmpty ? item.nameCn : item.name,
         cover: item.images['medium'],
+        updatedAt: clock(),
       ),
     );
+    return true;
   }
 
-  Future<void> ensureBangumiBinding(BangumiItem item) =>
-      _queued(() => _ensureBinding(item));
+  Future<void> ensureBangumiBinding(BangumiItem item) => _queued(() async {
+    await _ensureBinding(item);
+  });
+
+  Future<int> ensureBangumiBindings(Iterable<BangumiItem> items) async {
+    var created = 0;
+    await _queued(() async {
+      for (final item in items) {
+        if (await _ensureBinding(item)) created++;
+      }
+    });
+    return created;
+  }
 
   Future<void> stopTracking(int subjectId) => _queued(() async {
     final ids = _excludedSubjectIds;
@@ -71,7 +89,9 @@ class BangumiBindingManager {
         ids,
       );
     }
-    await bindings.delete('$subjectId:${TrackerId.bangumi.name}');
+    final key = '$subjectId:${TrackerId.bangumi.name}';
+    await tombstones.put(key, clock().millisecondsSinceEpoch);
+    await bindings.delete(key);
   });
 
   Future<void> startTracking(BangumiItem item) => _queued(() async {
@@ -80,7 +100,17 @@ class BangumiBindingManager {
       SettingsKeys.bangumiExcludedSubjectIds.name,
       ids,
     );
-    await _ensureBinding(item);
+    await tombstones.delete('${item.id}:${TrackerId.bangumi.name}');
+    // An explicit add owes 想看 (planning); implicit binding creation does not.
+    // An already-bound subject keeps whatever status the tracker already has.
+    final created = await _ensureBinding(item);
+    if (created) {
+      await sync.enqueue(
+        item.id,
+        status: TrackStatus.planning,
+        trackerId: TrackerId.bangumi,
+      );
+    }
   });
 
   Future<void> statusChanged(BangumiItem item, CollectType type) async {

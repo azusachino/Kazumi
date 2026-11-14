@@ -32,11 +32,27 @@ class CollectedBangumiChange {
   @HiveField(4)
   int timestamp;
 
-  CollectedBangumiChange(
-      this.id, this.bangumiID, this.action, this.type, this.timestamp);
+  // Who recorded this change: the owner or a tracker status this device read.
+  // 0 means user, 1 means tracker. default 0 is mandatory: rows written by a
+  // build without this field are already in synced boxes, and the generated
+  // adapter reads `(fields[5] as num).toInt()`.
+  @HiveField(5, defaultValue: 0)
+  int origin;
+
+  CollectedBangumiChange(this.id, this.bangumiID, this.action, this.type,
+      this.timestamp, {this.origin = CollectChangeOrigin.user});
 
   @override
   String toString() {
-    return 'id: $id, bangumi: $bangumiID, action: $action, time: $timestamp';
+    return 'id: $id, bangumi: $bangumiID, action: $action, time: $timestamp, origin: $origin';
   }
+}
+
+/// The two origins a collect change can have.
+abstract final class CollectChangeOrigin {
+  /// The owner changed the category in this app.
+  static const int user = 0;
+
+  /// This device followed a status the tracker already held.
+  static const int tracker = 1;
 }

@@ -9,6 +9,7 @@ import 'package:kazumi/repositories/collect_crud_repository.dart';
 import 'package:kazumi/services/storage/storage.dart';
 import 'package:kazumi/services/tracking/bangumi_import.dart';
 import 'package:kazumi/services/tracking/bangumi_tracker.dart';
+import 'package:kazumi/services/tracking/tracking_features.dart';
 
 class BangumiSyncPage extends StatefulWidget {
   const BangumiSyncPage({super.key});
@@ -110,6 +111,7 @@ class _BangumiSyncPageState extends State<BangumiSyncPage> {
                   bangumi,
                   bangumi.tracker as BangumiTracker,
                   CollectCrudRepository(),
+                  ensureBinding: ensureBangumiBindingOnSync,
                 ).run();
                 return '已从 Bangumi 导入 $count 部番剧';
               }),

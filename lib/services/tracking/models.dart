@@ -18,6 +18,7 @@ class TrackingBinding {
     this.title,
     this.cover,
     this.total,
+    this.updatedAt,
     String? generation,
   }) : generation = generation ?? const Uuid().v4();
   @HiveField(0)
@@ -44,6 +45,8 @@ class TrackingBinding {
   final int? total;
   @HiveField(11)
   final String generation;
+  @HiveField(12)
+  final DateTime? updatedAt;
 
   String get key => '$subjectId:${trackerId.name}';
   TrackingBinding synced(int progress, DateTime at) => TrackingBinding(
@@ -59,6 +62,7 @@ class TrackingBinding {
     cover: cover,
     total: total,
     generation: generation,
+    updatedAt: updatedAt,
   );
 }
 

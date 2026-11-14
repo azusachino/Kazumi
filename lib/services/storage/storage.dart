@@ -8,6 +8,7 @@ import 'package:kazumi/hive_registrar.g.dart';
 import 'package:kazumi/modules/history/history_module.dart';
 import 'package:kazumi/modules/collect/collect_module.dart';
 import 'package:kazumi/modules/collect/collect_change_module.dart';
+import 'package:kazumi/modules/collect/tracking_collect_type.dart';
 import 'package:kazumi/modules/collect/collect_sync_merger.dart';
 import 'package:kazumi/modules/search/search_history_module.dart';
 import 'package:kazumi/modules/download/download_module.dart';
@@ -22,6 +23,8 @@ import 'package:kazumi/services/tracking/bangumi_tracker.dart';
 import 'package:kazumi/services/tracking/tracker.dart';
 import 'package:kazumi/services/tracking/models.dart';
 import 'package:kazumi/services/tracking/stores.dart';
+import 'package:kazumi/services/tracking/tracking_entry_cache.dart';
+import 'package:kazumi/services/tracking/tracking_storage.dart';
 import 'package:kazumi/services/tracking/tracking_sync.dart';
 
 import 'package:kazumi/services/storage/settings_keys.dart';
@@ -38,7 +41,9 @@ class GStorage {
   static late Box<SearchHistory> searchHistory;
   static late Box<DownloadRecord> downloads;
   static late Box<TrackingBinding> trackingBindings;
+  static late Box<int> trackingTombstones;
   static late Box<OutboxEntry> trackingOutbox;
+  static late TrackingEntryCache trackingEntryCache;
   static late TrackingSync trackingSync;
   static late BangumiAccount bangumiAccount;
   static late AniListAccount anilistAccount;
@@ -97,7 +102,7 @@ class GStorage {
   }
 
   /// Generate id for collect change
-  static int _generateCollectChangeIdLocked() {
+  static int generateCollectChangeIdLocked() {
     _initializeNextCollectChangeIdLocked();
 
     final currentSeconds = DateTime.now().millisecondsSinceEpoch ~/ 1000;
@@ -118,20 +123,26 @@ class GStorage {
     required int action,
     required int type,
     int? timestamp,
+    int origin = CollectChangeOrigin.user,
   }) {
     return _runCollectChangesWriteExclusive(() async {
       final change = CollectedBangumiChange(
-        _generateCollectChangeIdLocked(),
+        generateCollectChangeIdLocked(),
         bangumiId,
         action,
         type,
         timestamp ?? (DateTime.now().millisecondsSinceEpoch ~/ 1000),
+        origin: origin,
       );
       await collectChanges.put(change.id, change);
       await collectChanges.flush();
       return change;
     });
   }
+
+  /// Runs [action] inside the collect write block, for fork-only helpers.
+  static Future<T> runCollectWriteExclusive<T>(Future<T> Function() action) =>
+      _runCollectChangesWriteExclusive(action);
 
   /// Update an existing collect change
   static Future<void> putCollectChange(CollectedBangumiChange change) {
@@ -188,7 +199,9 @@ class GStorage {
     searchHistory = await _openBoxSafe<SearchHistory>('searchHistory');
     downloads = await _openBoxSafe<DownloadRecord>('downloads');
     trackingBindings = await _openBoxSafe<TrackingBinding>('trackingBindings');
+    trackingTombstones = await _openBoxSafe<int>('trackingTombstones');
     trackingOutbox = await _openBoxSafe<OutboxEntry>('trackingOutbox');
+    final cacheBox = await _openBoxSafe<String>('trackingEntryCache');
     final tracker = BangumiTracker();
     final anilistTracker = AniListTracker();
     final bindings = HiveBindingStore(trackingBindings);
@@ -209,9 +222,13 @@ class GStorage {
       trackers: [tracker, anilistTracker],
       tokenProvider: (id) => id == TrackerId.bangumi
           ? bangumiAccount.validToken() : anilistAccount.validToken(),
+      cache: trackingEntryCache = TrackingEntryCache.forAccounts(
+          cacheBox, bangumiAccount, anilistAccount),
+      // A status set on bgm.tv or on another device reaches 追番 here.
+      onRemoteStatus: (subjectId, status) =>
+          followTrackerStatus(subjectId, status.toCollectType().value),
     );
-    bangumiBindingManager = BangumiBindingManager(bangumiAccount, bindings, trackingSync);
-    anilistBindingManager = AniListBindingManager(anilistAccount, bindings, trackingSync);
+    wireTrackingManagers(bindings);
     if (Platform.isIOS) {
       await rebaseIosDownloadPaths(downloads);
     }
@@ -372,7 +389,10 @@ class GStorage {
       await collectibles.flush();
 
       await collectChanges.clear();
+      _collectChangeIdInitialized = false;
+      _initializeNextCollectChangeIdLocked();
       for (var change in mergeResult.changes) {
+        change = rekeyCollidingCollectChange(change);
         await collectChanges.put(change.id, change);
       }
       await collectChanges.flush();

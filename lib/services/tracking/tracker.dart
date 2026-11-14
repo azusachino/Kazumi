@@ -56,11 +56,16 @@ class RemoteEntry {
     required this.status,
     this.score,
     this.total,
+    this.updatedAt,
   });
   final int progress;
   final TrackStatus status;
   final int? score;
   final int? total;
+
+  /// When the tracker last changed this entry, as the tracker reported it.
+  /// Never fabricated: it bounds whether a local change may overwrite it.
+  final DateTime? updatedAt;
 }
 
 abstract interface class Tracker {

@@ -5,9 +5,11 @@ import 'package:kazumi/app_module.dart';
 import 'package:kazumi/app_widget.dart';
 import 'package:flutter_modular/flutter_modular.dart';
 import 'package:kazumi/bean/settings/theme_provider.dart';
+import 'package:kazumi/bean/widget/tracker_logo.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:kazumi/services/deep_links/app_deep_links.dart';
 import 'package:kazumi/services/storage/storage.dart';
+import 'package:kazumi/services/tracking/tracking_startup.dart';
 import 'package:kazumi/services/download/download_directory_service.dart';
 import 'package:hive_ce_flutter/hive_flutter.dart';
 import 'package:kazumi/services/network/metered_network_service.dart';
@@ -29,6 +31,7 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   AppDeepLinks().start();
   registerEchHttpLicenses();
+  registerTrackerLogoLicenses();
   MediaKit.ensureInitialized();
   if (Platform.isAndroid || Platform.isIOS) {
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
@@ -112,4 +115,5 @@ void main() async {
     ),
   );
   unawaited(GStorage.trackingSync.drain());
+  unawaited(KazumiTrackingStartup.run());
 }

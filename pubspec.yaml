@@ -163,6 +163,7 @@ flutter:
     - assets/images/logo/
     - assets/statements/
     - licenses/ech_http/
+    - licenses/mihon/
   fonts:
     - family: MI_Sans_Regular
       fonts:

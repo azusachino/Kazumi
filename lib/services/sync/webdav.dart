@@ -8,11 +8,12 @@ import 'package:kazumi/services/logging/logger.dart';
 import 'package:kazumi/modules/collect/collect_module.dart';
 import 'package:kazumi/modules/collect/collect_change_module.dart';
 import 'package:kazumi/services/sync/history_sync_service.dart';
+import 'package:kazumi/services/sync/tracking_webdav_exchange.dart';
 import 'package:kazumi/services/sync/webdav_remote_file_commit.dart';
 import 'package:kazumi/utils/async_serial_queue.dart';
 import 'package:kazumi/utils/async_single_flight.dart';
 
-class WebDav {
+class WebDav implements TrackingWebDavTransport {
   static const String _syncRootPath = '/kazumiSync';
   static const String _historyRootPath = '$_syncRootPath/history';
   static const String _historyChangesPath = '$_historyRootPath/changes';
@@ -33,6 +34,7 @@ class WebDav {
   final AsyncSerialQueue _webDavOperationQueue = AsyncSerialQueue();
   final WebDavRemoteFileCommitter _remoteFileCommitter =
       const WebDavRemoteFileCommitter();
+  late final TrackingWebDavExchange _tracking = TrackingWebDavExchange(this);
 
   bool get isHistorySyncing => _historySyncSingleFlight.isRunning;
 
@@ -192,8 +194,26 @@ class WebDav {
     await client.read2File('$_syncRootPath/$fileName', existingFile.path);
   }
 
-  Future<void> syncCollectibles() async {
-    return _runWebDavExclusive(_syncCollectibles);
+  Future<void> syncCollectibles() => _runWebDavExclusive(() async {
+    await _syncCollectibles();
+    await _tracking.sync();
+  });
+
+  Future<void> syncTracking() => _runWebDavExclusive(_tracking.sync);
+
+  @override
+  Future<List<String>> listNames(String path) async =>
+      [for (final entry in await client.readDir(path)) entry.name ?? ''];
+  @override
+  Future<void> download(String remotePath, String localPath) =>
+      client.read2File(remotePath, localPath);
+  @override
+  RemoteFilePublisher get publish => _publishRemoteFile;
+  @override
+  Future<Directory> createScratchDirectory() async {
+    if (!initialized) await _init();
+    await _ensureLocalTempDirectory();
+    return webDavLocalTempDirectory.createTemp('tracking-sync-');
   }
 
   Future<void> _syncCollectibles() async {
@@ -210,6 +230,7 @@ class WebDav {
       if (GStorage.collectChanges.isNotEmpty) {
         await _updateBox('collectchanges');
       }
+      await ensureCollectedBangumiBindings();
       return;
     }
 
@@ -245,6 +266,8 @@ class WebDav {
     if (remoteChanges.isNotEmpty || remoteCollectibles.isNotEmpty) {
       await GStorage.patchCollectibles(remoteCollectibles, remoteChanges);
     }
+    await ensureCollectedBangumiBindings();
+    await enqueueReceivedStatuses();
     await _updateBox('collectibles');
     if (GStorage.collectChanges.isNotEmpty) {
       await _updateBox('collectchanges');

@@ -96,7 +96,7 @@ class _WebDavSyncPageState extends State<WebDavSyncPage> {
             const SyncPageIntro(
               icon: Icons.devices_rounded,
               title: 'WebDAV',
-              description: '连接自己的云盘，同步观看记录、收藏与弹幕屏蔽词。',
+              description: '连接自己的云盘，同步观看记录、收藏、追踪匹配与弹幕屏蔽词。',
             ),
             SettingsSection(
               margin: EdgeInsets.zero,
@@ -142,7 +142,7 @@ class _WebDavSyncPageState extends State<WebDavSyncPage> {
                 SettingsTile.switchTile(
                   leading: Icons.favorite_rounded,
                   title: const Text('收藏'),
-                  description: const Text('在收藏页同步所有追番分类'),
+                  description: const Text('同步追番分类与追踪匹配'),
                   initialValue: collect,
                   enabled: enabled && !_busy,
                   onToggle: (value) async {

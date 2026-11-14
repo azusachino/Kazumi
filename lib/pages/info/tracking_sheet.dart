@@ -1,12 +1,19 @@
+import 'dart:async';
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_modular/flutter_modular.dart';
 import 'package:hive_ce_flutter/hive_flutter.dart';
 import 'package:kazumi/bean/dialog/adaptive_bottom_sheet.dart';
+import 'package:kazumi/bean/dialog/dialog.dart';
+import 'package:kazumi/bean/widget/tracker_logo.dart';
 import 'package:kazumi/modules/bangumi/bangumi_item.dart';
 import 'package:kazumi/modules/bangumi/bangumi_title.dart';
 import 'package:kazumi/modules/collect/collect_type.dart';
+import 'package:kazumi/modules/collect/tracking_collect_type.dart';
 import 'package:kazumi/pages/collect/collect_controller.dart';
+import 'package:kazumi/services/logging/logger.dart';
 import 'package:kazumi/pages/info/anilist_search_page.dart';
 import 'package:kazumi/services/storage/storage.dart';
 import 'package:kazumi/services/tracking/models.dart';
@@ -21,8 +28,19 @@ Future<void> showTrackingSheet(BuildContext context, BangumiItem item) =>
     );
 
 class TrackingSheet extends StatefulWidget {
-  const TrackingSheet({super.key, required this.item});
+  const TrackingSheet({
+    super.key,
+    required this.item,
+    this.onRemoveBinding,
+    this.onMirrorStatus,
+  });
   final BangumiItem item;
+  final Future<void> Function(TrackingBinding binding)? onRemoveBinding;
+
+  /// Test seam: the real mirror is a local Hive write, which cannot run inside
+  /// a widget-test zone. Production leaves this null.
+  final Future<void> Function(BangumiItem item, CollectType type)? onMirrorStatus;
+
 
   @override
   State<TrackingSheet> createState() => _TrackingSheetState();
@@ -30,47 +48,31 @@ class TrackingSheet extends StatefulWidget {
 
 class _TrackingSheetState extends State<TrackingSheet> {
   final _collectController = inject<CollectController>();
-  final Map<String, RemoteEntry?> _remote = {};
-  final Map<String, String> _remoteGeneration = {};
   int _revision = 0;
   final Set<String> _reading = {};
   final Set<String> _loaded = {};
-  late final _collectChanges = GStorage.collectibles.listenable();
+  final Set<String> _readErrors = {};
   late final _bindingChanges = GStorage.trackingBindings.listenable();
   late final _outboxChanges = GStorage.trackingOutbox.listenable();
 
   @override
   void initState() {
     super.initState();
-    _collectChanges.addListener(_refreshCollect);
     _bindingChanges.addListener(_refresh);
     _outboxChanges.addListener(_refresh);
   }
 
   @override
   void dispose() {
-    _collectChanges.removeListener(_refreshCollect);
     _bindingChanges.removeListener(_refresh);
     _outboxChanges.removeListener(_refresh);
     super.dispose();
   }
 
-  void _refreshCollect() {
-    if (mounted) setState(() {});
-  }
-
-  Future<void> _selectCollectType(CollectType type) async {
-    if (_collectController.getCollectType(widget.item) == type.value) return;
-    if (type == CollectType.none) {
-      await _collectController.deleteCollect(widget.item);
-    } else {
-      await _collectController.addCollect(widget.item, type: type.value);
-    }
-  }
-
   void _refresh() {
     _revision++;
     _loaded.clear();
+    _readErrors.clear();
     if (mounted) setState(() {});
   }
 
@@ -82,34 +84,61 @@ class _TrackingSheetState extends State<TrackingSheet> {
     TrackStatus.dropped => '抛弃',
   };
 
-  Future<void> _read(TrackingBinding binding) async {
-    if (_reading.contains(binding.key) || _loaded.contains(binding.key)) return;
+  Future<void> _read(TrackingBinding binding, {bool force = false}) async {
+    if (_reading.contains(binding.key)) return;
+    final cache = GStorage.trackingEntryCache;
+    final snapshot = cache.get(binding);
+    if (!force) {
+      // A fresh snapshot renders immediately and needs no network read.
+      if (snapshot != null && snapshot.isFresh(DateTime.now())) {
+        _loaded.add(binding.key);
+        _readErrors.remove(binding.key);
+        return;
+      }
+      if (_loaded.contains(binding.key)) return;
+    }
     _reading.add(binding.key);
     final revision = _revision;
+    final scope = cache.scopeFor(binding.trackerId);
     try {
       final token = binding.trackerId == TrackerId.bangumi
           ? await GStorage.bangumiAccount.validToken()
           : await GStorage.anilistAccount.validToken();
-      if (token == null) return;
+      if (token == null) throw const TrackerAuthException();
       final entry = await GStorage.trackingSync.trackers[binding.trackerId]!
           .readEntry(token, binding.remoteId);
       if (revision == _revision &&
           mounted &&
           GStorage.trackingBindings.get(binding.key)?.generation ==
               binding.generation) {
+        // Always keyed to the account captured before the read, so a response
+        // that crosses a sign-in cannot populate the new account.
+        await cache.put(binding, entry, DateTime.now(), scope: scope);
+        // Persisting the row can outlive this sheet or its binding.
+        if (!mounted ||
+            revision != _revision ||
+            scope != cache.scopeFor(binding.trackerId) ||
+            GStorage.trackingBindings.get(binding.key)?.generation !=
+                binding.generation) {
+          return;
+        }
         _loaded.add(binding.key);
-        setState(() {
-          _remote[binding.key] = entry;
-          _remoteGeneration[binding.key] = binding.generation;
-        });
+        _readErrors.remove(binding.key);
+        setState(() {});
       }
     } catch (_) {
-      if (revision == _revision) _loaded.add(binding.key);
+      if (revision == _revision && mounted) {
+        setState(() {
+          _loaded.add(binding.key);
+          _readErrors.add(binding.key);
+        });
+      }
     } finally {
       _reading.remove(binding.key);
       if (mounted && revision != _revision) setState(() {});
     }
   }
+
 
   Future<void> _remove(TrackingBinding binding) async {
     final remove = await showDialog<bool>(
@@ -134,7 +163,10 @@ class _TrackingSheetState extends State<TrackingSheet> {
       ),
     );
     if (remove != true) return;
-    if (binding.trackerId == TrackerId.bangumi) {
+    final onRemoveBinding = widget.onRemoveBinding;
+    if (onRemoveBinding != null) {
+      await onRemoveBinding(binding);
+    } else if (binding.trackerId == TrackerId.bangumi) {
       await GStorage.bangumiBindingManager.stopTracking(binding.subjectId);
     } else {
       await GStorage.anilistBindingManager.unbind(binding.subjectId);
@@ -161,6 +193,7 @@ class _TrackingSheetState extends State<TrackingSheet> {
         title: binding.title,
         cover: binding.cover,
         total: binding.total,
+        updatedAt: DateTime.now(),
         // New generation: writes queued under the old offset are dropped,
         // since progress sent with a wrong offset could never be lowered.
       ),
@@ -209,13 +242,40 @@ class _TrackingSheetState extends State<TrackingSheet> {
         ),
       ),
     );
-    if (result != null) {
-      await GStorage.trackingSync.enqueue(
-        binding.subjectId,
-        status: result,
-        trackerId: binding.trackerId,
-      );
+    if (result == null) return;
+    await GStorage.trackingSync.enqueue(
+      binding.subjectId,
+      status: result,
+      trackerId: binding.trackerId,
+    );
+    // The drawer writes one tracker; the local library (what 追番 lists) has to
+    // follow, or a show set to 在看 here never appears under 追番 > 在看.
+    final localType = result.toCollectType();
+    if (_collectController.getCollectType(widget.item) == localType.value) {
+      return;
     }
+    final seam = widget.onMirrorStatus;
+    final mirror = seam != null
+        ? seam(widget.item, localType)
+        : _collectController.addCollectFromTracker(
+            widget.item,
+            localType.value,
+          );
+    unawaited(
+      mirror.catchError((Object e) {
+        KazumiLogger().e(
+          'Tracking: failed to mirror status into the library',
+          error: e,
+        );
+        // The tracker write already landed; name what did not happen so a
+        // local failure is not mistaken for a tracker one.
+        if (!mounted) return;
+        KazumiDialog.showToast(
+          context: context,
+          message: '本地追番状态未更新，追踪状态已保存',
+        );
+      }),
+    );
   }
 
   Future<void> _selectNumber(
@@ -280,27 +340,6 @@ class _TrackingSheetState extends State<TrackingSheet> {
       child: ListView(
         shrinkWrap: true,
         children: [
-          Text('收藏', style: Theme.of(context).textTheme.titleLarge),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            children: [
-              for (final type in [
-                CollectType.none,
-                CollectType.planToWatch,
-                CollectType.watching,
-                CollectType.watched,
-                CollectType.onHold,
-                CollectType.abandoned,
-              ])
-                ChoiceChip(
-                  label: Text(type == CollectType.none ? '未追' : type.label),
-                  selected: _collectController.getCollectType(widget.item) == type.value,
-                  onSelected: (_) => _selectCollectType(type),
-                ),
-            ],
-          ),
-          const SizedBox(height: 24),
           Text('追踪', style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: 16),
           if (ids.isEmpty) ...[
@@ -323,21 +362,7 @@ class _TrackingSheetState extends State<TrackingSheet> {
     );
   }
 
-  Widget _logo(TrackerId id) => Container(
-    width: 40,
-    height: 40,
-    alignment: Alignment.center,
-    decoration: BoxDecoration(
-      color: id == TrackerId.bangumi
-          ? const Color(0xFFF09199)
-          : const Color(0xFF02A9FF),
-      borderRadius: BorderRadius.circular(8),
-    ),
-    child: Text(
-      id == TrackerId.bangumi ? 'bgm' : 'AL',
-      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-    ),
-  );
+  Widget _logo(TrackerId id) => TrackerLogo(trackerId: id);
 
   Widget _buildTracker(TrackerId id) {
     final key = '${widget.item.id}:${id.name}';
@@ -363,13 +388,26 @@ class _TrackingSheetState extends State<TrackingSheet> {
       );
     }
     _read(binding);
-    final pending = GStorage.trackingOutbox.get(key);
-    final entry = _remoteGeneration[key] == binding.generation
-        ? _remote[key]
+    final snapshot = GStorage.trackingEntryCache.get(binding);
+    // A remembered null entry means the tracker has nothing for this subject;
+    // a missing snapshot means this device has not read it yet.
+    final known = snapshot != null || _loaded.contains(key);
+    final stale =
+        snapshot != null && !snapshot.isFresh(DateTime.now());
+    final entry = snapshot?.entry;
+    final queued = GStorage.trackingOutbox.get(key);
+    final pending = queued?.bindingGeneration == binding.generation &&
+            queued?.remoteId == binding.remoteId
+        ? queued
         : null;
-    final progress = entry?.progress ?? binding.lastRemoteProgress ?? 0;
+    final status = pending?.status ?? entry?.status;
+    final progress = pending?.progress ??
+        entry?.progress ??
+        (snapshot != null ? 0 : binding.lastRemoteProgress ?? 0);
     final total = entry?.total ?? binding.total;
-    final score = entry?.score ?? binding.score;
+    final score = pending?.score ??
+        entry?.score ??
+        (snapshot != null ? null : binding.score);
     final title = id == TrackerId.bangumi
         ? widget.item.displayTitle
         : (binding.title?.isNotEmpty == true ? binding.title! : 'AniList');
@@ -408,7 +446,7 @@ class _TrackingSheetState extends State<TrackingSheet> {
             const SizedBox(height: 32, child: VerticalDivider()),
             PopupMenuButton<String>(
               tooltip: '更多操作',
-              onSelected: (action) {
+              onSelected: (action) async {
                 switch (action) {
                   case 'open':
                     _open(binding);
@@ -416,14 +454,22 @@ class _TrackingSheetState extends State<TrackingSheet> {
                     _copy(_uri(binding).toString());
                   case 'offset':
                     _editOffset(binding);
+                  case 'refresh':
+                    await GStorage.trackingEntryCache.remove(binding);
+                    setState(() {
+                      _loaded.remove(binding.key);
+                      _readErrors.remove(binding.key);
+                    });
+                    await _read(binding, force: true);
                   case 'remove':
-                    _remove(binding);
+                    await _remove(binding);
                 }
               },
               itemBuilder: (_) => const [
                 PopupMenuItem(value: 'open', child: Text('在浏览器中打开')),
                 PopupMenuItem(value: 'copy', child: Text('复制链接')),
                 PopupMenuItem(value: 'offset', child: Text('集数偏移')),
+                PopupMenuItem(value: 'refresh', child: Text('刷新状态')),
                 PopupMenuItem(value: 'remove', child: Text('移除')),
               ],
             ),
@@ -439,8 +485,10 @@ class _TrackingSheetState extends State<TrackingSheet> {
             child: Row(
               children: [
                 _cell(
-                  entry == null ? '状态' : _status(entry.status),
-                  () => _selectStatus(binding, entry?.status),
+                  status != null ? _status(status) :
+                      _readErrors.contains(key) ? '读取失败' :
+                      known ? '状态' : '读取中…',
+                  () => _selectStatus(binding, status),
                 ),
                 const VerticalDivider(width: 1),
                 _cell(
@@ -469,6 +517,29 @@ class _TrackingSheetState extends State<TrackingSheet> {
             ),
           ),
         ),
+        if (stale && !_readErrors.contains(key) && _reading.contains(key))
+          Text(
+            '正在刷新追踪状态…',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+        if (_readErrors.contains(key))
+          Row(
+            children: [
+              const Expanded(child: Text('无法读取追踪状态')),
+              TextButton(
+                onPressed: () {
+                  setState(() {
+                    _loaded.remove(key);
+                    _readErrors.remove(key);
+                  });
+                  _read(binding, force: true);
+                },
+                child: const Text('重新读取'),
+              ),
+            ],
+          ),
         if (pending != null)
           Row(
             children: [
@@ -529,7 +600,7 @@ class _NumberDialogState extends State<_NumberDialog> {
   late int selected = widget.maximum == null
       ? widget.initial
       : widget.initial.clamp(0, widget.maximum!);
-  late final _controller = TextEditingController(text: '${widget.initial}');
+  late final _controller = TextEditingController(text: '$selected');
   late final _wheel = FixedExtentScrollController(initialItem: selected);
 
   @override
@@ -550,19 +621,51 @@ class _NumberDialogState extends State<_NumberDialog> {
             decoration: const InputDecoration(border: OutlineInputBorder()),
           )
         : SizedBox(
-            width: double.maxFinite,
+            // Material dialog width, not the whole tablet: a full-width
+            // number wheel reads as a page, not a selector.
+            width: math.min(
+              320,
+              MediaQuery.sizeOf(context).width - 120,
+            ),
             height: 200,
-            child: ListWheelScrollView.useDelegate(
-              controller: _wheel,
-              itemExtent: 40,
-              physics: const FixedExtentScrollPhysics(),
-              onSelectedItemChanged: (value) => selected = value,
-              childDelegate: ListWheelChildBuilderDelegate(
-                childCount: widget.maximum! + 1,
-                builder: (context, index) => Center(
-                  child: Text(widget.score && index == 0 ? '不评分' : '$index'),
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                IgnorePointer(
+                  child: Container(
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.secondaryContainer,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
                 ),
-              ),
+                ListWheelScrollView.useDelegate(
+                  controller: _wheel,
+                  itemExtent: 40,
+                  physics: const FixedExtentScrollPhysics(),
+                  onSelectedItemChanged: (value) => setState(() => selected = value),
+                  childDelegate: ListWheelChildBuilderDelegate(
+                    childCount: widget.maximum! + 1,
+                    builder: (context, index) => Semantics(
+                      selected: index == selected,
+                      label: '${widget.title}：$index',
+                      child: Center(
+                        child: Text(
+                          widget.score && index == 0 ? '不评分' : '$index',
+                          style: TextStyle(
+                            fontSize: index == selected ? 24 : 18,
+                            fontWeight: index == selected ? FontWeight.bold : FontWeight.normal,
+                            color: index == selected
+                                ? Theme.of(context).colorScheme.onSecondaryContainer
+                                : Theme.of(context).colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
     actions: [

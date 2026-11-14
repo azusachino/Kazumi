@@ -4,6 +4,7 @@ import 'package:kazumi/modules/collect/collect_module.dart';
 import 'package:kazumi/modules/collect/collect_type.dart';
 import 'package:kazumi/services/storage/storage.dart';
 import 'package:kazumi/services/sync/webdav.dart';
+import 'package:kazumi/modules/collect/tracking_library_mirror.dart';
 import 'package:kazumi/repositories/collect_crud_repository.dart';
 import 'package:mobx/mobx.dart';
 import 'package:kazumi/services/logging/logger.dart';
@@ -54,6 +55,9 @@ abstract class _CollectController with Store {
       KazumiLogger().e('Tracking: failed to enqueue collection status');
     }
   }
+
+  Future<void> addCollectFromTracker(BangumiItem bangumiItem, int type) =>
+      mirrorTrackerStatus(_collectCrudRepository, bangumiItem, type, loadCollectibles);
 
   @action
   Future<void> deleteCollect(BangumiItem bangumiItem) async {

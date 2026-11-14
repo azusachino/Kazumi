@@ -59,14 +59,34 @@ abstract interface class Tracker {
 
 One binding per Bangumi subject per tracker, in a new Hive box:
 `subjectId`, `trackerId`, `remoteId`, `episodeOffset` (default 0),
-`statusLocked`, `score`, `lastRemoteProgress`, `lastSyncAt`, title/cover
-snapshot.
+`statusLocked`, `score`, `lastRemoteProgress`, `lastSyncAt`, `updatedAt`,
+title/cover snapshot.
 
 - Bangumi: Kazumi items already are Bangumi subjects, so the binding is
-  created automatically with `remoteId = subjectId`.
+  created automatically with `remoteId = subjectId` on collection status
+  changes, watched events, Bangumi import, WebDAV collection sync and the
+  startup backfill. A local opt-out prevents automatic binding.
 - AniList: manual. Search prefilled with the title, pick, confirm. No
-  auto-matching.
-- Removing a binding deletes local rows only; the remote list is untouched.
+  auto-matching. AniList bindings and their delete tombstones sync through the
+  WebDAV tracking file; pulled bindings remain stored while signed out.
+- Binding sync excludes tokens and the per-device outbox; the remote tracker
+  lists are untouched by local binding removal.
+
+### Sync limits
+
+- Exclusions sync as a union, so a later sync can restore an exclusion from
+  another device and undo a local `startTracking` until that device clears it.
+- Startup backfill skips while signed out and does not rerun on sign-in. Existing
+  collected rows are backfilled on the next app start or a later collection
+  status/watch event.
+- Deletion tombstones are retained without pruning so older devices cannot
+  resurrect removed bindings.
+- An interrupted local bind/unbind can leave both a binding and tombstone. Sync
+  chooses the newer timestamp and prefers deletion on a same-device tie. Remote
+  JSON still rejects duplicate candidates for one key and is not uploaded.
+- A manual AniList edit during an in-flight WebDAV apply can race with that
+  apply. This is an inferred, narrow follow-up risk; no concurrency change is
+  made here.
 
 ### Episode numbering
 
@@ -283,14 +303,116 @@ It follows the owner's animeko setting (fork PR #2,
   history lists, search results, player and download titles, comments
   sheet headers); character and staff names are unchanged.
 
-## Collection button as the tracking entry
+## Tracking action on the detail page
 
-The info page's collection-status button ("在看", "未追", …) is the single
-entry: it keeps its label, adds the number of bound trackers, and opens the
-tracking sheet. The sheet's top "收藏" row sets Kazumi's local status
-(including 未追, which removes locally) through the existing collection
-paths, so trackers receive the status as before. The separate 追踪 icon is
-gone. The Bangumi block shows the subject's display title (follows 显示原名).
+The detail page uses a dedicated `追踪` / `已追踪` action, following Mihon's
+separation of library membership and tracker state. It opens the tracker-only
+sheet. It does not display a local collection category or a count of bindings:
+`想看 · 2` mixed a local category with a service count, and could contradict
+both services' current status. Library collection management remains in the
+existing collection/library flows.
+
+Each tracker row uses its service's brand artwork with an accessible name.
+The Bangumi block follows the subject's display-title preference. Status,
+progress and score come from that service's current entry; a matching-generation
+outbox edit takes precedence while pending or failed and keeps its visible sync
+indicator. Stale-generation rows are ignored. An unsuccessful read is shown
+explicitly with `重新读取`; it is never presented as a successful status read.
+The episode/score wheel highlights the center selection and exposes its selected
+value to assistive technology before confirmation. Opening a drawer or cancelling
+a picker does not enqueue a remote change.
+
+Bangumi is the canonical watch status for the library: a Kazumi subject is a
+Bangumi subject. A successful Bangumi drain rewrites only the local category
+when no local edit for that subject is still queued, so a status changed on
+bgm.tv or on another device reaches 追番 on the next drain (app start, or after
+any local status or progress enqueue). AniList is a manual secondary match and
+never drives the local category. Propagation updates the row in place — the
+stored item and its timestamp survive a category change — and records a
+`tracker`-origin collect change in the same write block, so the next
+collectibles merge keeps it. It creates no outbox row: the tracker is the
+source of that status.
+
+### Watch status across stores and devices
+
+| Store | Owns | Travels over |
+| --- | --- | --- |
+| Bangumi collection entry | the canonical watch status, with its own `updated_at` | the tracker |
+| AniList entry | a manual secondary match | the tracker |
+| `collectibles` | this device's projection of the status | WebDAV |
+| `collectchanges` | the intent log the WebDAV merge needs | WebDAV |
+| `trackingEntryCache` | what the drawer displays | never |
+| `trackingOutbox` | pending tracker writes | never (per device) |
+
+- **Origin.** Every collect change records whether the owner made it (`user`)
+  or this device followed a status the tracker already held (`tracker`).
+  `CollectedBangumiChange.origin` is Hive field 5 defaulting to 0, so rows
+  written by an older build read as `user` instead of failing to open.
+- **A tracker-origin change never causes a tracker write**, so propagation
+  cannot echo back to the source it came from.
+- **Merging is last-write-wins per subject**, not per change. A change is
+  identified by `(id, subject)`; the log is the union of both sides, and the
+  winner for a subject is the greatest `(timestamp, origin, type)`: the owner
+  outranks a tracker echo, and a higher category breaks a same-second tie. Both
+  devices compute the same winner whichever side they merge from, so a tie
+  converges instead of oscillating. Deletes take part: a newer delete removes
+  the row, a newer add restores it.
+- **An id collision cannot drop an edit.** Two devices can mint the same
+  same-second id for different subjects, so the merge keeps both entries and
+  `patchCollectibles` moves the incoming one to a fresh local id when an id is
+  already taken by another subject.
+- **A received category reaches Bangumi only when it is the owner's own and
+  newer than the tracker's edit.** After a collectibles merge, a `user`-origin
+  winning change whose local category differs from the status this device last
+  recorded, and whose timestamp is newer than that entry's Bangumi
+  `updated_at`, is enqueued for Bangumi unless a row is already pending. An
+  older local change leaves the tracker's own edit alone, AniList is never a
+  target, and a subject with no recorded tracker timestamp is skipped rather
+  than guessed at.
+- **Wall clocks decide.** A device with a fast clock wins; ties resolve by
+  content, not time, which is what makes them converge.
+
+A drawer status change also moves the show in the local library, because 追番
+lists local collection categories, not tracker entries. The sheet writes the
+equivalent local category and its collect change through
+`CollectController.addCollectFromTracker`, which deliberately skips the tracker
+fan-out: the dialog already enqueued the one tracker the owner chose, and
+fanning out would write the other tracker and could create a binding nobody
+asked for.
+
+An explicit add owes a status. Tapping `添加追踪` on a tracker creates the local
+binding and, only when that binding did not already exist, enqueues
+`TrackStatus.planning` (`想看`) so the tracker gains a real entry instead of the
+drawer falling back to the `状态` placeholder. An already-bound subject keeps
+the status the tracker already has, and implicit binding creation — Bangumi
+import and the startup backfill — still enqueues nothing, because those paths
+describe state the remote already holds. WebDAV apply is the one exception: a
+category that arrives there may enqueue a Bangumi delta under the timestamp
+guard above, because on that device the tracker has not seen the category yet.
+
+### Local entry snapshots
+
+The drawer must show what this device last read without waiting on a tracker,
+so a slow Bangumi request no longer leaves a row blank or flickering.
+
+- Remote entries are remembered in a device-local Hive `Box<String>`
+  (`trackingEntryCache`) as JSON: the optional `RemoteEntry` plus `fetchedAt`.
+  A remembered null entry means "the tracker has no entry", which is distinct
+  from a cache miss.
+- The key is account username (never a token) + subject/tracker + remote id +
+  binding generation. Signing into another account or rebinding cannot surface
+  another account's or another subject's snapshot.
+- Snapshots are fresh for five minutes. A fresh snapshot renders immediately
+  without a network read; a stale one stays visible while a background read
+  runs, with a plain `正在刷新追踪状态…` line, and `刷新状态`/`重新读取` force a
+  read. `fetchedAt` in the future (clock rollback) is treated as stale.
+- A corrupt persisted row is a miss. A cache write failure is logged and never
+  turns a successful remote read or write into a retry.
+- `TrackingSync` refreshes the snapshot from a successful read or write before
+  it deletes the outbox row, so clearing a pending edit never reverts the UI to
+  older state. The account scope is captured before each network read.
+- The cache is display state, not account state: it is excluded from the WebDAV
+  `tracking.json` payload and never synced.
 
 Build, verification and upstream-sync notes live in the owner's workstation
 KB (`docs/projects/kazumi.md`), not in this repository.
@@ -308,3 +430,46 @@ default to the `kazumi://` URIs.
 
 Comments, notes, start/finish dates, private flag, other trackers, syncing
 the outbox across devices.
+
+## Where fork code lives
+
+Fork logic lives in a fork-only file; a shared upstream file keeps at most a
+delegation line. That is what keeps the next merge from upstream cheap, and it
+keeps this fork reviewable one file at a time.
+
+| Shared file | The fork's remaining footprint |
+| --- | --- |
+| `lib/services/sync/webdav.dart` | the `TrackingWebDavTransport` implementation, three calls into the exchange |
+| `lib/modules/collect/collect_sync_merger.dart` | `mergeWebDav` returns `mergeCollectChanges(...)` |
+| `lib/services/storage/storage.dart` | two box fields, the entry-cache wiring, the `onRemoteStatus` line, the collect write block and id generator the fork helpers use |
+| `lib/pages/collect/collect_controller.dart` | `addCollectFromTracker` delegates |
+| `lib/main.dart` | two calls: the license hook and `KazumiTrackingStartup.run()` |
+| `lib/bean/widget/collect_button.dart` | the widget and its constructors; `build` delegates |
+
+Fork-only homes:
+
+| Fork logic | File |
+| --- | --- |
+| WebDAV tracking exchange and its collect-side hooks | `lib/services/sync/tracking_webdav_exchange.dart` |
+| the collect merge decision | `lib/modules/collect/collect_change_merge.dart` |
+| collect-box writes, the id-collision rekey, binding-manager wiring | `lib/services/tracking/tracking_storage.dart` |
+| `TrackStatus` ↔ `CollectType` | `lib/modules/collect/tracking_collect_type.dart` |
+| the library side of a tracker status change | `lib/modules/collect/tracking_library_mirror.dart` |
+| the startup binding backfill | `lib/services/tracking/tracking_startup.dart` |
+| the tracking button | `lib/bean/widget/tracking_entry_button.dart` |
+| the flags | `lib/services/tracking/tracking_features.dart` |
+
+### Flags
+
+One settings key, `trackingFeatureFlags`, holds a map of flags. An absent key
+or an absent flag means enabled, so a device turns a seam off without reverting
+code, and a bad merge shows up as a flag default rather than a silent behaviour
+change. Each seam reads its flag with one synchronous call; nothing subscribes.
+There is no settings UI: the map is written in the settings box.
+
+| Flag | Guards | Default |
+| --- | --- | --- |
+| `bindingsOnSync` | binding creation after Bangumi import, WebDAV apply and startup backfill | on |
+| `statusMirror` | the drawer's status change writing the local category | on |
+| `remoteStatusFollow` | the drain writing a Bangumi status into the library | on |
+| `writeBackOnSync` | a received category enqueuing a Bangumi delta | on |

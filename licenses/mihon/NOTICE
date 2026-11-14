@@ -1,0 +1,12 @@
+Tracker brand artwork
+
+assets/images/tracker_anilist.svg and assets/images/tracker_bangumi.svg were
+converted from brand_anilist.xml and brand_bangumi.xml in Mihon:
+https://github.com/mihonapp/mihon
+Revision: 0c55527206d5b253c58a2428cfebeed10b249571
+Paths: app/src/main/res/drawable/brand_{anilist,bangumi}.xml
+
+Mihon is licensed under Apache License 2.0; the accompanying LICENSE preserves
+that license. Changes: converted Android VectorDrawable path/gradient data to
+SVG and retained the original 192 x 192 viewport and brand colors.
+Brand names and marks identify their respective tracking services.
